@@ -51,6 +51,7 @@ npm run dev               # http://localhost:5173
 | `src/pages/BillingPage.tsx` | Run billing (with "Bill as of" date in demo mode), result counts, run history with failure log |
 | `src/pages/PaymentsPage.tsx` | "Waiting for payment" with Record payment, and "Received" with date filter |
 | `src/components/RecordPaymentModal.tsx` | Method, amount (defaults to balance, part payments allowed), date, reference |
+| `src/pages/DashboardPage.tsx` | KPI tiles (active, MRR with ARR, collected, outstanding, overdue), revenue-by-month chart, overdue aging, overdue invoices with Record payment, filters, CSV export |
 | `src/pages/PortalPage.tsx` | Customer portal: balance banner, subscription cards with ring and pause/resume/renew/close (by plan flags), invoices with PDF, payments, browse plans and request one |
 | `src/lib/cycle.ts` | Billing-period maths (anchor day), cycle progress, and the allowed status actions from SRS 9.5 |
 | `src/pages/PlansPage.tsx` | Plans table with availability status, filters, create/edit modal with period, dates and the four lifecycle switches |
@@ -83,7 +84,7 @@ Fonts: Bricolage Grotesque (headings, wordmark) and Onest (everything else), bun
 ## Suggested build order
 
 1. Auth ✅ → 2. Products ✅, Plans ✅, Customers (list ✅, form to do) → 3. Subscriptions ✅ + Templates ✅ → 4. Invoices ✅, Billing ✅, Payments ✅ →
-5. Portal ✅ → 6. Dashboard → 7. Taxes, Discounts, Staff, Audit (cut first if short on time)
+5. Portal ✅ → 6. Dashboard ✅ → 7. Taxes, Discounts, Staff, Audit (cut first if short on time)
 
 ## Notes for the backend (Akshaya)
 

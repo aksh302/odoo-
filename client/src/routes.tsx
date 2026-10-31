@@ -5,6 +5,7 @@ import { ProtectedRoute, PublicOnlyRoute } from './auth/ProtectedRoute'
 import { AppLayout, PortalLayout } from './components/AppLayout'
 import { PlaceholderPage } from './components/PlaceholderPage'
 import CustomersPage from './pages/CustomersPage'
+import DashboardPage from './pages/DashboardPage'
 import BillingPage from './pages/BillingPage'
 import InvoiceDetailPage from './pages/InvoiceDetailPage'
 import InvoicePrintPage from './pages/InvoicePrintPage'
@@ -41,7 +42,7 @@ export function AppRoutes() {
         {/* Printable invoice opens in its own tab, without the app layout */}
         <Route path="/invoices/:id/print" element={<InvoicePrintPage />} />
         <Route element={<AppLayout />}>
-          <Route path="/dashboard" element={<P title="Dashboard" todo="KPI cards (active, MRR, ARR, collected, outstanding, overdue), revenue-by-month chart, overdue table, aging buckets, filter bar, summary totals, CSV export" />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/:id" element={<P title="Customer" todo="profile form, the customer's subscriptions and invoices" />} />
           <Route path="/products" element={<ProductsPage />} />

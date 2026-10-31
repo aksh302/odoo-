@@ -1,5 +1,6 @@
 import { Select, Spin } from 'antd'
 import { useEffect, useRef, useState } from 'react'
+import type React from 'react'
 import { api } from '../api/client'
 import type { Paged, User } from '../lib/types'
 
@@ -13,12 +14,18 @@ export function CustomerSelect({
   onChange,
   initial,
   disabled,
+  allowClear,
+  placeholder = 'Search by name or company',
+  style,
 }: {
   id?: string
   value?: number
-  onChange?: (id: number) => void
+  onChange?: (id: number | undefined) => void
   initial?: { id: number; name: string; company?: string | null }
   disabled?: boolean
+  allowClear?: boolean
+  placeholder?: string
+  style?: React.CSSProperties
 }) {
   const [options, setOptions] = useState<{ value: number; label: string }[]>(
     initial ? [{ value: initial.id, label: label(initial) }] : [],
@@ -57,7 +64,9 @@ export function CustomerSelect({
       value={value}
       onChange={onChange}
       options={options}
-      placeholder="Search by name or company"
+      placeholder={placeholder}
+      allowClear={allowClear}
+      style={style}
       notFoundContent={loading ? <Spin size="small" /> : 'No customers found'}
       disabled={disabled}
     />

@@ -5,6 +5,7 @@ import { catalogRoutes } from './catalog'
 import { subscriptionRoutes } from './subscriptions'
 import { billingRoutes } from './billing'
 import { portalRoutes } from './portal'
+import { reportRoutes } from './reports'
 import { fail } from './util'
 import type { MockResult, MockRoutes } from './util'
 
@@ -27,6 +28,7 @@ const ALL_ROUTES: MockRoutes = {
   ...subscriptionRoutes,
   ...billingRoutes,
   ...portalRoutes,
+  ...reportRoutes,
 }
 
 // Pre-compile 'PUT /products/:id' -> regex once.

@@ -14,7 +14,7 @@ import {
   UserOutlined,
   WalletOutlined,
 } from '@ant-design/icons'
-import { Avatar, Button, Dropdown, Layout, Menu, Tag } from 'antd'
+import { Avatar, Button, Dropdown, Grid, Layout, Menu, Tag } from 'antd'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -57,6 +57,8 @@ export function AppLayout() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [collapsed, setCollapsed] = useState(false)
+  const screens = Grid.useBreakpoint()
+  const phone = screens.md === false // hide the sidebar fully on phones; the trigger brings it back
 
   const visible = NAV.filter((n) => user && n.roles.includes(user.role))
   const items = GROUPS.map((g) => ({
@@ -69,7 +71,7 @@ export function AppLayout() {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} breakpoint="lg" theme="dark" width={232}>
+      <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} breakpoint="lg" collapsedWidth={phone ? 0 : 80} theme="dark" width={232}>
         <div className="flex h-16 items-center" style={{ padding: collapsed ? '0 26px' : '0 22px' }}>
           <Logo onDark compact={collapsed} />
         </div>
@@ -84,7 +86,7 @@ export function AppLayout() {
       </Sider>
       <Layout>
         <TopBar />
-        <Content style={{ padding: '28px 32px' }}>
+        <Content style={{ padding: phone ? '20px 16px' : '28px 32px' }}>
           <Outlet />
         </Content>
       </Layout>

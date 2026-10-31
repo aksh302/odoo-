@@ -139,9 +139,9 @@ function makeSub(i: number, status: SubscriptionStatus, planId: number, customer
       next = addPeriods(s.startDate, plan.billingPeriod, periods.length, s.anchorDay)
     }
     s.nextBillingDate = status === 'CLOSED' ? null : next
-    // Seed past invoices (latest 6 periods) into the ledger.
+    // Seed past invoices (latest 12 periods) into the ledger.
     const customer = findCustomer(s.customerId)!
-    periods.slice(-6).forEach((ps, k, arr) => {
+    periods.slice(-12).forEach((ps, k, arr) => {
       const inv = buildInvoice({
         subscriptionId: s.id,
         subscriptionNumber: s.number,
