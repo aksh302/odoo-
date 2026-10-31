@@ -53,6 +53,11 @@ npm run dev               # http://localhost:5173
 | `src/components/RecordPaymentModal.tsx` | Method, amount (defaults to balance, part payments allowed), date, reference |
 | `src/pages/DashboardPage.tsx` | KPI tiles (active, MRR with ARR, collected, outstanding, overdue), revenue-by-month chart, overdue aging, overdue invoices with Record payment, filters, CSV export |
 | `src/pages/PortalPage.tsx` | Customer portal: balance banner, subscription cards with ring and pause/resume/renew/close (by plan flags), invoices with PDF, payments, browse plans and request one |
+| `src/pages/CustomersPage.tsx` / `CustomerDetailPage.tsx` | Customer list, create/edit drawer (billing profile, GSTIN), detail with MRR, balance, subscriptions and invoices, "New subscription" prefilled |
+| `src/pages/admin/TaxesPage.tsx` | Tax rules (Admin) |
+| `src/pages/admin/DiscountsPage.tsx` | Discounts: percent or fixed, products or whole subscription, min qty / spend, dates, usage limit with progress, on/off |
+| `src/pages/admin/StaffPage.tsx` | Add staff (Admin only), deactivate / reactivate; last admin and yourself are protected |
+| `src/pages/admin/AuditPage.tsx` | Who changed what: status changes, payments, voids, billing runs, discounts, taxes, staff, customers |
 | `src/lib/cycle.ts` | Billing-period maths (anchor day), cycle progress, and the allowed status actions from SRS 9.5 |
 | `src/pages/PlansPage.tsx` | Plans table with availability status, filters, create/edit modal with period, dates and the four lifecycle switches |
 | `src/routes.tsx` | Every route from SRS 9.7. Not-yet-built pages show a placeholder listing what to build |
@@ -83,8 +88,10 @@ Fonts: Bricolage Grotesque (headings, wordmark) and Onest (everything else), bun
 
 ## Suggested build order
 
-1. Auth ✅ → 2. Products ✅, Plans ✅, Customers (list ✅, form to do) → 3. Subscriptions ✅ + Templates ✅ → 4. Invoices ✅, Billing ✅, Payments ✅ →
-5. Portal ✅ → 6. Dashboard ✅ → 7. Taxes, Discounts, Staff, Audit (cut first if short on time)
+1. Auth ✅ → 2. Products ✅, Plans ✅, Customers ✅ → 3. Subscriptions ✅ + Templates ✅ → 4. Invoices ✅, Billing ✅, Payments ✅ →
+5. Portal ✅ → 6. Dashboard ✅ → 7. Taxes ✅, Discounts ✅, Staff ✅, Audit log ✅
+
+All screens in SRS 9.7 are built.
 
 ## Notes for the backend (Akshaya)
 
@@ -98,3 +105,6 @@ Fonts: Bricolage Grotesque (headings, wordmark) and Onest (everything else), bun
 - Portal: customers need `GET /plans?available=true` and `GET /products` (without `costPrice`) to browse and request plans.
 - Portal: the printable invoice uses `GET /portal/invoices/:id` (same shape as `GET /invoices/:id`, own invoices only). Not in SRS 9.6 yet.
 - `POST /portal/subscriptions` is sent as `{ planId, quantity, lines }` and should create a QUOTATION.
+- Admin screens use three endpoints not in SRS 9.6 yet: `PUT /taxes/:id`, `GET /users?q=` (staff and admins, paged) and `GET /customers/:id` returning `{ customer, subscriptions, invoices }`.
+- `GET /audit` rows: `{ id, at, userName, action, entity, entityId, entityLabel, oldValue, newValue }`. Action names are listed in `AuditPage.tsx`.
+- Discounts are sent with `productIds` (empty for SUBSCRIPTION scope); `usedCount` is read only.
