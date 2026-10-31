@@ -8,7 +8,7 @@ import type { AxiosAdapter, AxiosResponse, InternalAxiosRequestConfig } from 'ax
  * - paths and verbs:  /products -> /catalog/products, PATCH /subscriptions/1/status -> POST /subscriptions/1/transition
  * - request bodies:   drops nulls (zod `.optional()` rejects null), renames fields
  * - responses:        midnight-UTC dates -> 'YYYY-MM-DD', Decimal strings -> numbers, renamed keys
- * - not built yet:    answers 501 NOT_BUILT so the screen shows a clear message
+ * - not built yet:    a rule returning null answers 501 NOT_BUILT so the screen shows a clear message
  *
  * See BACKEND_GAPS.md for the list of server endpoints still missing.
  */
@@ -20,6 +20,8 @@ interface Call {
   url: string
   params?: Record<string, unknown>
   body?: Json
+  /** send nulls as-is (for fields an edit form clears on purpose) */
+  keepNulls?: boolean
 }
 
 interface Rule {
@@ -35,7 +37,6 @@ interface Rule {
 
 const same = (_m: RegExpMatchArray, c: Call): Call => c
 const at = (url: string, extra: Partial<Call> = {}) => (_m: RegExpMatchArray, c: Call): Call => ({ ...c, url, ...extra })
-const notBuilt = () => null
 
 const paged = (rows: Json[], params: Record<string, unknown> = {}) => {
   const page = Number(params.page ?? 1)
@@ -56,6 +57,11 @@ const bigPage = (c: Call): Call => ({ ...c, params: { ...c.params, page: 1, limi
 const discountOut = (d: Json) => (d ? { ...d, productIds: d.productIds ?? (d.products ?? []).map((p: Json) => p.productId) } : d)
 const withCompany = (s: Json) =>
   s?.customer ? { ...s, customer: { ...s.customer, company: s.customer.company ?? s.customer.profile?.company ?? null } } : s
+/** The server stores the snapshot's address as `address`; screens read `billingAddress`. */
+const invoiceOut = (i: Json) =>
+  i?.customerSnapshot ? { ...i, customerSnapshot: { billingAddress: i.customerSnapshot.address ?? null, ...i.customerSnapshot } } : i
+const invoiceListOut = (d: Json) => (d?.data ? { ...d, data: d.data.map(invoiceOut) } : d)
+const invoiceDetailOut = (d: Json) => (d?.invoice ? { ...d, invoice: invoiceOut(d.invoice) } : d)
 const recurring = (s: Json) =>
   s.recurringAmount ?? (s.plan?.price ?? 0) + (s.lines ?? []).reduce((a: number, l: Json) => a + (l.amount ?? 0), 0)
 
@@ -78,8 +84,8 @@ const RULES: Rule[] = [
     to: (m, c) =>
       c.body?.isArchived === true
         ? { ...c, method: 'POST', url: `/catalog/products/${m[1]}/archive`, body: {} }
-        : c.body?.isArchived === false
-          ? null // restore: not on the server yet
+        : c.body?.isArchived === false && Object.keys(c.body).length === 1
+          ? { ...c, method: 'POST', url: `/catalog/products/${m[1]}/restore`, body: {} }
           : { ...c, url: `/catalog/products/${m[1]}` },
   },
   { method: 'POST', path: /^\/variants$/, to: at('/catalog/variants') },
@@ -104,16 +110,21 @@ const RULES: Rule[] = [
   {
     method: 'PUT',
     path: /^\/plans\/(\d+)$/,
-    to: (m, c) => (c.body?.isArchived === true && Object.keys(c.body).length === 1 ? { ...c, method: 'POST', url: `/catalog/plans/${m[1]}/archive`, body: {} } : null),
+    to: (m, c) => {
+      const only = c.body && Object.keys(c.body).length === 1
+      if (only && c.body.isArchived === true) return { ...c, method: 'POST', url: `/catalog/plans/${m[1]}/archive`, body: {} }
+      if (only && c.body.isArchived === false) return { ...c, method: 'POST', url: `/catalog/plans/${m[1]}/restore`, body: {} }
+      return { ...c, url: `/catalog/plans/${m[1]}` }
+    },
   },
   { method: 'GET', path: /^\/taxes$/, to: at('/catalog/taxes'), out: (d, c) => (Array.isArray(d?.taxes) ? paged(d.taxes, { limit: 100, ...c.params }) : d) },
   { method: 'POST', path: /^\/taxes$/, to: at('/catalog/taxes') },
-  { method: 'PUT', path: /^\/taxes\/\d+$/, to: notBuilt },
+  { method: 'PUT', path: /^\/taxes\/(\d+)$/, to: (m, c) => ({ ...c, url: `/catalog/taxes/${m[1]}` }) },
 
   // ---- templates ----
   { method: 'GET', path: /^\/templates$/, to: (_m, c) => bigPage({ ...c, url: '/quotations' }), out: (d, c) => filterList(d, c, (t) => contains(t.name, c.params?.q)) },
   { method: 'POST', path: /^\/templates$/, to: at('/quotations') },
-  { method: 'PUT', path: /^\/templates\/\d+$/, to: notBuilt },
+  { method: 'PUT', path: /^\/templates\/(\d+)$/, to: (m, c) => ({ ...c, url: `/quotations/${m[1]}` }) },
 
   // ---- customers & staff ----
   {
@@ -129,17 +140,22 @@ const RULES: Rule[] = [
     compose: async (m, c, send) => {
       const { customer } = await send({ ...c, url: `/auth/customers/${m[1]}` })
       const subs = await send({ method: 'GET', url: '/subscriptions', params: { customerId: m[1], limit: 100 } })
-      return { customer: { ...customer, role: 'CUSTOMER' }, subscriptions: (subs.data ?? []).map(withCompany).map((s: Json) => ({ ...s, recurringAmount: recurring(s) })), invoices: [] }
+      const invs = await send({ method: 'GET', url: '/billing/invoices', params: { customerId: m[1], limit: 100 } })
+      return {
+        customer: { ...customer, role: 'CUSTOMER' },
+        subscriptions: (subs.data ?? []).map(withCompany).map((s: Json) => ({ ...s, recurringAmount: recurring(s) })),
+        invoices: (invs.data ?? []).map(invoiceOut),
+      }
     },
   },
   { method: 'POST', path: /^\/customers$/, to: at('/auth/customers') },
   { method: 'PUT', path: /^\/customers\/(\d+)$/, to: (m, c) => ({ ...c, url: `/auth/customers/${m[1]}` }) },
-  { method: 'GET', path: /^\/users$/, to: notBuilt },
-  { method: 'POST', path: /^\/users\/staff$/, to: at('/auth/staff') },
+  { method: 'GET', path: /^\/users$/, to: at('/auth/users') },
+  { method: 'POST', path: /^\/users\/staff$/, to: at('/auth/staff'), out: (d) => (d?.staff ? { user: { isActive: true, ...d.staff } } : d) },
   {
     method: 'PATCH',
     path: /^\/users\/(\d+)\/active$/,
-    to: (m, c) => (c.body?.isActive === false ? { ...c, method: 'POST', url: `/auth/users/${m[1]}/deactivate`, body: {} } : null),
+    to: (m, c) => ({ ...c, method: 'POST', url: `/auth/users/${m[1]}/${c.body?.isActive === false ? 'deactivate' : 'reactivate'}`, body: {} }),
   },
 
   // ---- subscriptions ----
@@ -167,7 +183,7 @@ const RULES: Rule[] = [
       return { subscription: { ...withCompany(rest), recurringAmount: recurring(s) }, lines, invoices }
     },
   },
-  { method: 'PUT', path: /^\/subscriptions\/\d+$/, to: notBuilt },
+  { method: 'PUT', path: /^\/subscriptions\/\d+$/, to: same },
   {
     method: 'PATCH',
     path: /^\/subscriptions\/(\d+)\/status$/,
@@ -178,9 +194,9 @@ const RULES: Rule[] = [
   },
 
   // ---- billing & invoices ----
-  { method: 'GET', path: /^\/billing\/runs$/, to: notBuilt },
-  { method: 'GET', path: /^\/invoices$/, to: notBuilt },
-  { method: 'GET', path: /^\/invoices\/\d+$/, to: notBuilt },
+  { method: 'GET', path: /^\/billing\/runs$/, to: same },
+  { method: 'GET', path: /^\/invoices$/, to: at('/billing/invoices'), out: invoiceListOut },
+  { method: 'GET', path: /^\/invoices\/(\d+)$/, to: (m, c) => ({ ...c, url: `/billing/invoices/${m[1]}` }), out: invoiceDetailOut },
   {
     method: 'PATCH',
     path: /^\/invoices\/(\d+)\/status$/,
@@ -189,11 +205,13 @@ const RULES: Rule[] = [
   {
     method: 'POST',
     path: /^\/invoices\/confirm-drafts$/,
-    to: (_m, c) => (c.body?.ids?.length ? { ...c, url: '/billing/invoices/bulk-confirm', body: { invoiceIds: c.body.ids } } : null),
-    out: (d) => ({ confirmed: d?.confirmed ?? d?.count ?? d?.updated ?? 0 }),
+    to: (_m, c) => ({ ...c, url: '/billing/invoices/confirm-drafts', body: c.body?.ids?.length ? { invoiceIds: c.body.ids } : {} }),
+    out: (d) => ({ confirmed: d?.confirmedCount ?? d?.confirmed ?? 0 }),
   },
-  { method: 'POST', path: /^\/invoices\/(\d+)\/remind$/, to: notBuilt },
-  { method: 'POST', path: /^\/invoices\/remind-overdue$/, to: notBuilt },
+  { method: 'POST', path: /^\/invoices\/(\d+)\/remind$/, to: (m, c) => ({ ...c, url: `/billing/invoices/${m[1]}/remind` }), out: invoiceDetailOut },
+  { method: 'POST', path: /^\/invoices\/remind-overdue$/, to: at('/billing/invoices/remind-overdue') },
+  { method: 'POST', path: /^\/payments$/, to: same, out: invoiceDetailOut },
+  { method: 'POST', path: /^\/payments\/\d+\/void$/, to: same, out: invoiceDetailOut },
 
   // ---- pricing, reports, audit ----
   {
@@ -208,7 +226,15 @@ const RULES: Rule[] = [
     to: (_m, c) => ({ ...c, url: '/pricing/discounts' }),
     out: (d) => (d?.discount ? { discount: discountOut(d.discount) } : d),
   },
-  { method: 'PUT', path: /^\/discounts\/\d+$/, to: notBuilt },
+  {
+    method: 'PUT',
+    path: /^\/discounts\/(\d+)$/,
+    to: (m, c) => {
+      const { usedCount: _readOnly, id: _id, products: _p, ...body } = c.body ?? {}
+      return { ...c, url: `/pricing/discounts/${m[1]}`, body, keepNulls: true }
+    },
+    out: (d) => (d?.discount ? { discount: discountOut(d.discount) } : d),
+  },
   {
     method: 'GET',
     path: /^\/reports\/summary$/,
@@ -250,7 +276,9 @@ const RULES: Rule[] = [
       return action ? { ...c, method: 'POST', url: `/portal/subscriptions/${m[1]}/${action}`, body: {} } : null
     },
   },
-  { method: 'GET', path: /^\/portal\/payments$/, to: notBuilt },
+  { method: 'GET', path: /^\/portal\/payments$/, to: same },
+  { method: 'GET', path: /^\/portal\/invoices$/, to: same, out: invoiceListOut },
+  { method: 'GET', path: /^\/portal\/invoices\/\d+$/, to: same, out: invoiceDetailOut },
 ]
 
 // ---------------------------------------------------------------------------
@@ -307,7 +335,7 @@ export function translatingAdapter(http: AxiosAdapter): AxiosAdapter {
       method: c.method.toLowerCase(),
       url: c.url,
       params: c.params,
-      data: c.body === undefined ? undefined : JSON.stringify(dropNulls(c.body)),
+      data: c.body === undefined ? undefined : JSON.stringify(c.keepNulls ? c.body : dropNulls(c.body)),
     })
     return res
   }
