@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { AxiosAdapter } from 'axios'
+import { translatingAdapter } from './backend'
 import { mockAdapter } from './mock'
 
 export const TOKEN_KEY = 'bl_token'
@@ -20,7 +21,8 @@ const REAL_PREFIXES = (import.meta.env.VITE_REAL_API || '')
 
 export const MIXED_MODE = USE_MOCKS && REAL_PREFIXES.length > 0
 
-const realAdapter = axios.getAdapter(['xhr', 'fetch'])
+// Real server calls go through the translation layer (SRS paths -> the backend's routes and shapes).
+const realAdapter = translatingAdapter(axios.getAdapter(['xhr', 'fetch']))
 const routedAdapter: AxiosAdapter = (config) =>
   REAL_PREFIXES.some((p: string) => (config.url ?? '').startsWith(p)) ? realAdapter(config) : mockAdapter(config)
 
@@ -31,7 +33,7 @@ const routedAdapter: AxiosAdapter = (config) =>
  */
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
-  ...(USE_MOCKS ? { adapter: MIXED_MODE ? routedAdapter : mockAdapter } : {}),
+  adapter: USE_MOCKS ? (MIXED_MODE ? routedAdapter : mockAdapter) : realAdapter,
 })
 
 api.interceptors.request.use((config) => {

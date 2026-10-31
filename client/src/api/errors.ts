@@ -18,6 +18,7 @@ const MESSAGES: Record<string, string> = {
   OVERPAYMENT: 'Amount is more than the outstanding balance.',
   BILLING_RUNNING: 'A billing run is already in progress.',
   RATE_LIMITED: 'Too many attempts. Please wait a few minutes.',
+  NOT_BUILT: 'This part of the server isn’t ready yet. Switch it back to mock data in .env (VITE_REAL_API).',
 }
 
 export interface ParsedError {
