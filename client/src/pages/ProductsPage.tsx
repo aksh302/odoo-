@@ -136,11 +136,12 @@ export default function ProductsPage() {
             allowClear
             prefix={<SearchOutlined />}
             placeholder="Search name or type"
+            aria-label="Search name or type"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           <Space>
-            <Switch size="small" checked={showArchived} onChange={setShowArchived} />
+            <Switch size="small" checked={showArchived} onChange={setShowArchived} aria-label="Show archived" />
             <span>Show archived</span>
           </Space>
         </div>
@@ -192,6 +193,7 @@ function ProductDrawer({
         salesPrice: product.salesPrice,
         costPrice: product.costPrice,
         taxId: product.taxId ?? null,
+        sacCode: product.sacCode ?? '',
         notes: product.notes ?? '',
       })
     } else {
@@ -202,7 +204,7 @@ function ProductDrawer({
   const save = async (values: ProductInput) => {
     setSaving(true)
     try {
-      const input = { ...values, name: values.name.trim(), notes: values.notes?.trim() || null }
+      const input = { ...values, name: values.name.trim(), notes: values.notes?.trim() || null, sacCode: values.sacCode?.trim() || null }
       const saved = product
         ? await catalogApi.updateProduct(product.id, input)
         : await catalogApi.createProduct(input)
@@ -260,11 +262,17 @@ function ProductDrawer({
               <MoneyInput />
             </Form.Item>
           </Col>
-          <Col xs={24}>
+          <Col xs={24} sm={8}>
+            <Form.Item name="sacCode" label="SAC code" tooltip="GST service code printed on invoices, e.g. 997331 for software licences" rules={[{ pattern: /^\d{4,8}$/, message: '4 to 8 digits' }]}>
+              <Input placeholder="997331" />
+            </Form.Item>
+          </Col>
+          <Col xs={24} sm={16}>
             <Form.Item name="taxId" label="Tax">
               <Select
                 allowClear
                 placeholder="No tax"
+            aria-label="No tax"
                 options={taxes.map((t) => ({ value: t.id, label: `${t.name} (${t.percent}%)` }))}
               />
             </Form.Item>
@@ -352,7 +360,7 @@ function VariantEditor({
       title: 'Active',
       align: 'center',
       render: (_, v) => (
-        <Switch size="small" checked={!v.isArchived} disabled={readOnly} onChange={() => toggle(v)} />
+        <Switch size="small" checked={!v.isArchived} disabled={readOnly} onChange={() => toggle(v)} aria-label={`${v.value} variant active`} />
       ),
     },
   ]

@@ -47,6 +47,7 @@ export default function CustomersPage() {
           allowClear
           prefix={<SearchOutlined />}
           placeholder="Search name, email or company"
+            aria-label="Search name, email or company"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />

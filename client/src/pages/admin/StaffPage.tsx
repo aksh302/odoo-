@@ -44,7 +44,7 @@ export default function StaffPage() {
       align: 'center',
       render: (_, u) =>
         u.id === me?.id ? (
-          <Switch size="small" checked disabled />
+          <Switch size="small" checked disabled aria-label="You can log in" />
         ) : (
           <Popconfirm
             title={u.isActive ? `Deactivate ${u.name}?` : `Reactivate ${u.name}?`}
@@ -53,7 +53,7 @@ export default function StaffPage() {
             okButtonProps={{ danger: u.isActive }}
             onConfirm={() => toggle(u)}
           >
-            <Switch size="small" checked={u.isActive} />
+            <Switch size="small" checked={u.isActive} aria-label={`${u.name} can log in`} />
           </Popconfirm>
         ),
     },
@@ -73,6 +73,7 @@ export default function StaffPage() {
           allowClear
           prefix={<SearchOutlined />}
           placeholder="Search name or email"
+            aria-label="Search name or email"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />

@@ -5,6 +5,7 @@ import type { Paged, Plan, Product, Tax, Variant } from '../lib/types'
 
 export type ProductInput = Pick<Product, 'name' | 'type' | 'salesPrice' | 'costPrice'> & {
   notes?: string | null
+  sacCode?: string | null
   taxId?: number | null
 }
 export type VariantInput = Pick<Variant, 'productId' | 'attribute' | 'value' | 'extraPrice'>

@@ -159,6 +159,34 @@ export const billingRoutes: MockRoutes = {
     return [200, { confirmed }]
   },
 
+  // Not in SRS 9.6 yet: payment reminders for overdue invoices.
+  'POST /invoices/:id/remind': (ctx) => {
+    const denied = backOffice(ctx)
+    if (denied) return denied
+    const inv = findInvoice(ctx.params.id)
+    if (!inv) return fail(404, 'NOT_FOUND', 'Invoice not found')
+    if (inv.status !== 'CONFIRMED' || inv.amountPaid >= inv.total) return fail(409, 'INVOICE_LOCKED', 'Only unpaid confirmed invoices can be chased')
+    const channel = ctx.body.channel === 'WHATSAPP' ? 'WHATSAPP' : 'EMAIL'
+    const r = { at: new Date().toISOString(), channel, by: ctx.me?.name ?? null } as const
+    inv.reminders = [r, ...(inv.reminders ?? [])]
+    audit(ctx, 'INVOICE_REMIND', 'Invoice', inv.id, inv.number, null, { channel })
+    return [200, { invoice: invoiceView(inv) }]
+  },
+  'POST /invoices/remind-overdue': (ctx) => {
+    const denied = backOffice(ctx)
+    if (denied) return denied
+    const today = new Date().toISOString().slice(0, 10)
+    let sent = 0
+    invoices.filter(isOverdue).forEach((inv) => {
+      // At most one email reminder per invoice per day.
+      if (inv.reminders?.some((r) => r.channel === 'EMAIL' && r.at.slice(0, 10) === today)) return
+      inv.reminders = [{ at: new Date().toISOString(), channel: 'EMAIL', by: ctx.me?.name ?? null }, ...(inv.reminders ?? [])]
+      audit(ctx, 'INVOICE_REMIND', 'Invoice', inv.id, inv.number, null, { channel: 'EMAIL' })
+      sent++
+    })
+    return [200, { sent }]
+  },
+
   'POST /invoices/:id/send': (ctx) => {
     const denied = backOffice(ctx)
     if (denied) return denied

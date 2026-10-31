@@ -14,6 +14,7 @@ const ACTION: Record<string, string> = {
   SUBSCRIPTION_RENEW: 'Renewed subscription',
   INVOICE_STATUS: 'Changed invoice status',
   PAYMENT_CREATE: 'Recorded payment',
+  INVOICE_REMIND: 'Sent payment reminder',
   PAYMENT_VOID: 'Voided payment',
   BILLING_RUN: 'Ran billing',
   DISCOUNT_CREATE: 'Created discount',
@@ -41,6 +42,7 @@ function changeText(a: AuditEntry): string {
   if (a.action === 'PAYMENT_CREATE') return `₹${(Number(n.amount) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })} by ${String(n.method).replace('_', ' ').toLowerCase()}`
   if (a.action === 'PAYMENT_VOID') return `Reason: ${String(n.reason)}`
   if (a.action === 'BILLING_RUN') return `${n.created} created, ${n.skipped} skipped, ${n.failed} failed`
+  if (a.action === 'INVOICE_REMIND') return n.channel === 'WHATSAPP' ? 'By WhatsApp' : 'By email'
   if ('isActive' in n) return n.isActive ? 'Can log in' : 'Can’t log in'
   if ('percent' in n) return `${n.percent}%`
   return ''
@@ -82,6 +84,7 @@ export default function AuditPage() {
           <Select
             allowClear
             placeholder="Everything"
+            aria-label="Everything"
             style={{ width: 180 }}
             value={entity}
             onChange={setEntity}
@@ -92,6 +95,7 @@ export default function AuditPage() {
             allowClear
             prefix={<SearchOutlined />}
             placeholder="Record, person or action"
+            aria-label="Record, person or action"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />

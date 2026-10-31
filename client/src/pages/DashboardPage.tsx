@@ -1,12 +1,13 @@
 import { DownloadOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Col, DatePicker, Row, Select, Skeleton, Table, Typography } from 'antd'
+import { Alert, App, Button, Card, Col, DatePicker, Popconfirm, Row, Select, Skeleton, Table, Tooltip as AntTooltip, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bar, BarChart, CartesianGrid, Rectangle, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, Rectangle, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { parseError } from '../api/errors'
+import { subscriptionsApi } from '../api/subscriptions'
 import { reportsApi } from '../api/reports'
 import type { ReportFilters, Summary } from '../api/reports'
 import { brand } from '../brand/theme'
@@ -15,7 +16,7 @@ import { RecordPaymentModal } from '../components/RecordPaymentModal'
 import { useCatalog } from '../hooks/useCatalog'
 import { usePagedList } from '../hooks/usePagedList'
 import { formatINR, formatINRCompact, formatINRWhole } from '../lib/money'
-import type { Invoice } from '../lib/types'
+import type { Invoice, Subscription } from '../lib/types'
 
 const fmt = (d: string) => dayjs(d).format('D MMM YYYY')
 const GRID = '#E6ECE9'
@@ -82,7 +83,8 @@ export default function DashboardPage() {
           onChange={(r) => r?.[0] && r[1] && setRange([r[0].startOf('month'), r[1].isSame(dayjs(), 'month') ? dayjs() : r[1].endOf('month')])}
         />
         <CustomerSelect allowClear placeholder="All customers" value={customerId} onChange={setCustomerId} style={{ width: 240 }} />
-        <Select allowClear placeholder="All plans" style={{ width: 200 }} value={planId} onChange={setPlanId} options={plans.map((p) => ({ value: p.id, label: p.name }))} />
+        <Select allowClear placeholder="All plans"
+            aria-label="All plans" style={{ width: 200 }} value={planId} onChange={setPlanId} options={plans.map((p) => ({ value: p.id, label: p.name }))} />
         <Typography.Text type="secondary" className="text-xs">
           Dates filter payments received. Outstanding and overdue are as of today.
         </Typography.Text>
@@ -104,6 +106,16 @@ export default function DashboardPage() {
               <Card title="Overdue by age" style={{ height: '100%' }}>
                 <Aging s={data} />
               </Card>
+            </Col>
+          </Row>
+          <Row gutter={[24, 24]} className="mt-6">
+            <Col xs={24} xl={12}>
+              <Card title="How recurring revenue moved this month" style={{ height: '100%' }}>
+                <MrrBridge s={data} />
+              </Card>
+            </Col>
+            <Col xs={24} xl={12}>
+              <Renewals customerId={customerId} planId={planId} onRenewed={() => setReloadKey((k) => k + 1)} />
             </Col>
           </Row>
           <OverdueInvoices customerId={customerId} onPaid={() => setReloadKey((k) => k + 1)} />
@@ -296,6 +308,144 @@ function OverdueInvoices({ customerId, onPaid }: { customerId?: number; onPaid: 
           list.reload()
           onPaid()
         }}
+      />
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * A bridge (waterfall) from MRR at the start of the month to now:
+ * the standard way to show what moved a total. Gains in green, losses in marigold.
+ */
+function MrrBridge({ s }: { s: Summary }) {
+  const m = s.mrrMovement
+  if (!m) return <Typography.Text type="secondary">The server doesn't report this yet.</Typography.Text>
+  const end = s.mrr
+  const start = end - m.newMrr + m.pausedMrr + m.closedMrr
+  const steps = [
+    { label: 'Start of month', base: 0, value: start, kind: 'total' as const, note: '' },
+    { label: 'New', base: start, value: m.newMrr, kind: 'up' as const, note: `${m.newCount} started` },
+    { label: 'Paused', base: start + m.newMrr - m.pausedMrr, value: m.pausedMrr, kind: 'down' as const, note: `${m.pausedCount} paused` },
+    { label: 'Closed', base: start + m.newMrr - m.pausedMrr - m.closedMrr, value: m.closedMrr, kind: 'down' as const, note: `${m.closedCount} closed` },
+    { label: 'Now', base: 0, value: end, kind: 'total' as const, note: '' },
+  ]
+  const color = { total: brand.pine, up: brand.green, down: brand.marigold }
+  const data = steps.map((st) => ({ ...st, display: `${st.kind === 'down' ? '−' : st.kind === 'up' ? '+' : ''}${formatINRCompact(st.value)}` }))
+  const net = end - start
+  return (
+    <>
+      <div style={{ width: '100%', height: 220 }} role="img" aria-label={`MRR moved from ${formatINRWhole(start)} to ${formatINRWhole(end)} this month`}>
+        <ResponsiveContainer>
+          <BarChart data={data} margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid vertical={false} stroke={GRID} />
+            <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: GRID }} tick={{ fill: AXIS_TEXT, fontSize: 12 }} />
+            <YAxis domain={[0, 'auto']} tickFormatter={(v: number) => formatINRCompact(v)} tickLine={false} axisLine={false} tick={{ fill: AXIS_TEXT, fontSize: 12 }} width={56} />
+            <Tooltip
+              cursor={{ fill: 'rgba(31,107,82,0.06)' }}
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null
+                const p = payload[0].payload as (typeof steps)[number]
+                return (
+                  <div style={{ background: '#fff', border: `1px solid ${brand.line}`, borderRadius: 6, padding: '8px 10px' }}>
+                    <div style={{ color: AXIS_TEXT, fontSize: 12 }}>{p.label}</div>
+                    <div style={{ fontWeight: 600 }}>
+                      {p.kind === 'down' ? '−' : p.kind === 'up' ? '+' : ''}
+                      {formatINRWhole(p.value)}
+                    </div>
+                    {p.note && <div style={{ color: AXIS_TEXT, fontSize: 12 }}>{p.note}</div>}
+                  </div>
+                )
+              }}
+            />
+            {/* invisible base lifts each step to where the last one ended */}
+            <Bar dataKey="base" stackId="w" fill="transparent" isAnimationActive={false} />
+            <Bar dataKey="value" stackId="w" maxBarSize={40} radius={[4, 4, 4, 4]} isAnimationActive={false}>
+              {steps.map((st) => (
+                <Cell key={st.label} fill={color[st.kind]} />
+              ))}
+              <LabelList dataKey="display" position="top" style={{ fill: brand.slate, fontSize: 12 }} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <Typography.Text type="secondary" className="text-xs">
+        Net {net >= 0 ? 'gain' : 'loss'} of {formatINRWhole(Math.abs(net))} a month: {m.newCount} new, {m.pausedCount} paused, {m.closedCount} closed this month.
+      </Typography.Text>
+    </>
+  )
+}
+
+/** Active subscriptions ending in the next 30 days, renewable in one click. */
+function Renewals({ customerId, planId, onRenewed }: { customerId?: number; planId?: number; onRenewed: () => void }) {
+  const navigate = useNavigate()
+  const { message } = App.useApp()
+  const list = usePagedList<Subscription>('/subscriptions', { status: 'ACTIVE', expiringWithin: 30, customerId, planId }, 5)
+
+  const renew = async (s: Subscription) => {
+    try {
+      await subscriptionsApi.changeStatus(s.id, { action: 'renew' })
+      message.success(`${s.number} renewed for another term`)
+      list.reload()
+      onRenewed()
+    } catch (err) {
+      message.error(parseError(err).message)
+    }
+  }
+
+  const columns: ColumnsType<Subscription> = [
+    {
+      title: 'Subscription',
+      render: (_, s) => (
+        <span>
+          <Typography.Link onClick={() => navigate(`/subscriptions/${s.id}`)}>{s.customer?.company || s.customer?.name}</Typography.Link>
+          <Typography.Text type="secondary" className="block text-xs">
+            {s.number}, {s.plan?.name}
+          </Typography.Text>
+        </span>
+      ),
+    },
+    {
+      title: 'Ends',
+      render: (_, s) => {
+        const days = dayjs(s.expiryDate).diff(dayjs().startOf('day'), 'day')
+        return (
+          <span className="whitespace-nowrap">
+            {fmt(s.expiryDate)}
+            <Typography.Text type="secondary" className="block text-xs" style={days <= 7 ? { color: '#8A5A0C' } : undefined}>
+              in {days} day{days === 1 ? '' : 's'}
+            </Typography.Text>
+          </span>
+        )
+      },
+    },
+    {
+      title: '',
+      align: 'right',
+      render: (_, s) =>
+        s.plan?.renewable ? (
+          <Popconfirm title={`Renew ${s.number} for another term?`} okText="Renew" onConfirm={() => renew(s)}>
+            <Button size="small">Renew</Button>
+          </Popconfirm>
+        ) : (
+          <AntTooltip title="This plan doesn't allow renewal">
+            <Button size="small" disabled>
+              Renew
+            </Button>
+          </AntTooltip>
+        ),
+    },
+  ]
+
+  return (
+    <Card title="Ending in the next 30 days" style={{ height: '100%' }}>
+      <Table<Subscription>
+        {...list.tableProps}
+        columns={columns}
+        size="small"
+        pagination={list.total > 5 ? list.tableProps.pagination : false}
+        locale={{ emptyText: 'Nothing ends in the next 30 days.' }}
       />
     </Card>
   )

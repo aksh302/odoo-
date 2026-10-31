@@ -37,7 +37,7 @@ export function AuthCard({ title, subtitle, children }: { title: string; subtitl
             Plans, subscriptions, invoices and payments for recurring businesses, in one place.
           </p>
         </div>
-        <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 13 }}>
+        <span style={{ color: 'rgba(255,255,255,0.72)', fontSize: 13 }}>
           Mint dots are renewals already billed. Marigold dots are still due.
         </span>
       </aside>

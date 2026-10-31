@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "postinstall": "node scripts/setup-ocr.mjs"
+    "postinstall": "node scripts/setup-ocr.mjs",
+    "test": "vitest run",
+    "check-api": "node scripts/check-api.mjs"
   },
   "dependencies": {
     "@ant-design/cssinjs": "^2.1.2",
@@ -19,6 +21,7 @@
     "antd": "^6.6.8",
     "axios": "^1.21.0",
     "dayjs": "^1.11.23",
+    "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.5",
@@ -28,12 +31,14 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.19.2",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "oxlint": "^1.89.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~7.0.2",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   }
 }

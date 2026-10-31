@@ -65,6 +65,7 @@ export function CustomerSelect({
       onChange={onChange}
       options={options}
       placeholder={placeholder}
+      aria-label={placeholder}
       allowClear={allowClear}
       style={style}
       notFoundContent={loading ? <Spin size="small" /> : 'No customers found'}

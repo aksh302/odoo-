@@ -73,11 +73,12 @@ export function buildInvoice(args: {
 
   const lines: InvoiceLine[] = [
     // Plan fee: its own line, quantity 1, no tax
-    { id: nextId(), productId: null, description: `Plan fee - ${plan.name}`, quantity: 1, unitPrice: plan.price, amount: plan.price, discountAmount: 0, taxPercent: 0, taxAmount: 0 },
+    { id: nextId(), productId: null, description: `Plan fee - ${plan.name}`, sacCode: '997331', quantity: 1, unitPrice: plan.price, amount: plan.price, discountAmount: 0, taxPercent: 0, taxAmount: 0 },
     ...args.lines.map((l) => ({
       id: nextId(),
       productId: l.productId,
       description: l.description,
+      sacCode: l.sacCode ?? null,
       quantity: l.quantity,
       unitPrice: l.unitPrice,
       amount: l.amount,

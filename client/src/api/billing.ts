@@ -43,6 +43,11 @@ export const billingApi = {
     api.patch<{ invoice: Invoice }>(`/invoices/${id}/status`, { status }).then((r) => r.data.invoice),
   confirmDrafts: (ids?: number[]) =>
     api.post<{ confirmed: number }>('/invoices/confirm-drafts', ids ? { ids } : {}).then((r) => r.data.confirmed),
+  /** Not in SRS 9.6 yet. */
+  remind: (id: number, channel: 'EMAIL' | 'WHATSAPP') =>
+    api.post<{ invoice: Invoice }>(`/invoices/${id}/remind`, { channel }).then((r) => r.data.invoice),
+  /** Emails every overdue invoice that hasn't had an email reminder today. */
+  remindOverdue: () => api.post<{ sent: number }>('/invoices/remind-overdue').then((r) => r.data.sent),
   sendInvoice: (id: number) => api.post<{ emailedAt: string }>(`/invoices/${id}/send`).then((r) => r.data.emailedAt),
 
   /**

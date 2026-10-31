@@ -38,7 +38,7 @@ export function NextInvoice({ sub }: { sub: Subscription }) {
       <span className="inline-flex items-center gap-2 whitespace-nowrap">
         <CycleRing progress={info.progress} dueSoon={info.dueSoon} title={`Next invoice ${fmt(info.nextDate)}`} />
         <span>
-          <span style={info.dueSoon ? { color: '#A86A0F', fontWeight: 600 } : undefined}>{when}</span>
+          <span style={info.dueSoon ? { color: '#8A5A0C', fontWeight: 600 } : undefined}>{when}</span>
           <Typography.Text type="secondary" className="block text-xs">
             {fmt(info.nextDate)}
           </Typography.Text>
@@ -118,12 +118,14 @@ export default function SubscriptionsPage() {
             allowClear
             prefix={<SearchOutlined />}
             placeholder="Number, customer or company"
+            aria-label="Number, customer or company"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           <Select
             allowClear
             placeholder="Any plan"
+            aria-label="Any plan"
             style={{ width: 200 }}
             value={planId}
             onChange={setPlanId}

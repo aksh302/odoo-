@@ -19,6 +19,13 @@ npm run dev               # http://localhost:5173
 | staff@brightloop.test | STAFF | /dashboard (no Taxes, Discounts, Staff) |
 | customer@brightloop.test | CUSTOMER | /portal |
 
+**Mixed mode (backend half done):** keep `VITE_USE_MOCKS=true` and list the ready areas, e.g.
+`VITE_REAL_API=/auth,/products,/plans`. Those go to the real server, everything else stays on mock data.
+Put `/auth` first so mock screens accept the real login. The header shows "Real + mock data".
+
+**Check the backend:** with the server running, `npm run check-api` logs in and calls every GET endpoint the
+frontend uses, printing OK / MISSING / WRONG SHAPE per endpoint (read-only, changes nothing).
+
 **Real API:** set `VITE_USE_MOCKS=false`. Calls to `/api` are proxied to `http://localhost:4000`
 (change the port in `vite.config.ts` if Akshaya's server uses another).
 
@@ -66,6 +73,30 @@ npm run dev               # http://localhost:5173
 | `src/pages/PlansPage.tsx` | Plans table with availability status, filters, create/edit modal with period, dates and the four lifecycle switches |
 | `src/routes.tsx` | Every route from SRS 9.7. Not-yet-built pages show a placeholder listing what to build |
 
+## Extras beyond the SRS
+
+| Feature | Where | Notes |
+|---|---|---|
+| Bank statement import | Payments → Import bank statement | CSV or pasted rows; every credit matched to an invoice; review then record in bulk (`src/lib/statement.ts`) |
+| Read a payment | Payments → Read a payment | Photo/screenshot (in-browser OCR) or pasted SMS/note |
+| UPI QR on invoices | Invoice page, printout, portal | NPCI `upi://pay` link with amount and invoice number; set `VITE_UPI_ID` |
+| Payment reminders | Invoice → Remind, Invoices → Remind all overdue | Email via API, WhatsApp via `wa.me` link |
+| GST split | Invoice page and printout | CGST+SGST or IGST from the GSTIN state code; SAC code per product |
+| MRR bridge and renewals | Dashboard | How MRR moved this month; subscriptions ending in 30 days with Renew |
+| Help / rule book | Sidebar → How to use, portal header | Role-filtered steps and rules |
+| Reset demo data | Account menu (mock mode only) | Reloads the in-memory mock data |
+
+Tests: `npm test` (Vitest) covers the payment reader, statement matching, billing periods, invoice maths, GST and money formatting.
+
+## Tests and checks
+
+```bash
+npm test            # unit tests: payment reader, statement matching, billing maths
+npm run check-api   # compare a running backend with what the frontend expects
+```
+
+The app was checked with axe (WCAG 2 A/AA) on every page: no issues except one inside Ant Design's table internals.
+
 ## Brand
 
 Brightloop's look lives in `src/brand/`. Change colours and fonts there, not in pages.
@@ -112,3 +143,5 @@ All screens in SRS 9.7 are built.
 - Admin screens use three endpoints not in SRS 9.6 yet: `PUT /taxes/:id`, `GET /users?q=` (staff and admins, paged) and `GET /customers/:id` returning `{ customer, subscriptions, invoices }`.
 - `GET /audit` rows: `{ id, at, userName, action, entity, entityId, entityLabel, oldValue, newValue }`. Action names are listed in `AuditPage.tsx`.
 - Discounts are sent with `productIds` (empty for SUBSCRIPTION scope); `usedCount` is read only.
+- Extras need: `POST /invoices/:id/remind { channel: 'EMAIL' | 'WHATSAPP' }` → `{ invoice }` (with `reminders: [{ at, channel, by }]`), `POST /invoices/remind-overdue` → `{ sent }`, `GET /subscriptions?expiringWithin=30`, and `mrrMovement` in `GET /reports/summary` (`{ newMrr, newCount, pausedMrr, pausedCount, closedMrr, closedCount }`).
+- Products may carry `sacCode`; invoice lines `sacCode`; `customerSnapshot.phone` lets WhatsApp reminders work.

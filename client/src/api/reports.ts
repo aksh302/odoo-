@@ -20,6 +20,8 @@ export interface Summary {
   aging: { d0_30: number; d31_60: number; d60plus: number }
   counts: { paid: number; outstanding: number; overdue: number }
   revenueByMonth: { month: string; collected: number }[]
+  /** How MRR moved this calendar month (optional until the backend adds it) */
+  mrrMovement?: { newMrr: number; newCount: number; pausedMrr: number; pausedCount: number; closedMrr: number; closedCount: number }
 }
 
 const clean = (f: ReportFilters) => Object.fromEntries(Object.entries(f).filter(([, v]) => v !== undefined && v !== ''))

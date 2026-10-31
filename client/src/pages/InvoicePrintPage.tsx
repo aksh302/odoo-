@@ -8,7 +8,10 @@ import { parseError } from '../api/errors'
 import { portalApi } from '../api/portal'
 import { Logo } from '../brand/Logo'
 import { brand } from '../brand/theme'
+import { company } from '../lib/company'
+import { DEFAULT_SAC, gstSplit } from '../lib/gst'
 import { formatINR } from '../lib/money'
+import { UpiQr } from '../components/UpiQr'
 
 const fmt = (d?: string | null) => (d ? dayjs(d).format('D MMM YYYY') : '—')
 
@@ -37,6 +40,7 @@ export default function InvoicePrintPage({ source = 'staff' }: { source?: 'staff
   const { invoice: inv, lines, payments } = data
   const c = inv.customerSnapshot
   const balance = inv.total - inv.amountPaid
+  const gst = gstSplit(inv.taxTotal, c.taxId)
   const cell = { padding: '8px 6px', borderBottom: `1px solid ${brand.line}` } as const
 
   return (
@@ -62,9 +66,11 @@ export default function InvoicePrintPage({ source = 'staff' }: { source?: 'staff
           <div>
             <Logo />
             <div style={{ fontSize: 12, color: '#5B6B64', marginTop: 10, lineHeight: 1.6 }}>
-              Brightloop Software
+              {company.name}
               <br />
-              Chennai, Tamil Nadu
+              {company.address}
+              <br />
+              GSTIN {company.gstin}
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -91,6 +97,7 @@ export default function InvoicePrintPage({ source = 'staff' }: { source?: 'staff
                 ['Billing period', `${fmt(inv.periodStart)} – ${fmt(inv.periodEnd)}`],
                 ['Due', fmt(inv.dueDate)],
                 ['Subscription', inv.subscriptionNumber ?? ''],
+                ['Place of supply', gst.placeOfSupply],
               ].map(([k, v]) => (
                 <tr key={k}>
                   <td style={{ color: '#5B6B64', padding: '2px 12px 2px 0' }}>{k}</td>
@@ -108,7 +115,7 @@ export default function InvoicePrintPage({ source = 'staff' }: { source?: 'staff
               <th style={{ ...cell, textAlign: 'right' }}>Qty</th>
               <th style={{ ...cell, textAlign: 'right' }}>Unit price</th>
               <th style={{ ...cell, textAlign: 'right' }}>Discount</th>
-              <th style={{ ...cell, textAlign: 'right' }}>Tax</th>
+              <th style={{ ...cell, textAlign: 'right' }}>GST</th>
               <th style={{ ...cell, textAlign: 'right' }}>Amount</th>
             </tr>
           </thead>
@@ -117,7 +124,10 @@ export default function InvoicePrintPage({ source = 'staff' }: { source?: 'staff
               <tr key={l.id}>
                 <td style={cell}>
                   {l.description}
-                  {l.discountName && <div style={{ fontSize: 11, color: '#5B6B64' }}>{l.discountName}</div>}
+                  <div style={{ fontSize: 11, color: '#5B6B64' }}>
+                    SAC {l.sacCode || DEFAULT_SAC}
+                    {l.discountName ? `, ${l.discountName}` : ''}
+                  </div>
                 </td>
                 <td style={{ ...cell, textAlign: 'right' }}>{l.quantity}</td>
                 <td style={{ ...cell, textAlign: 'right' }}>{formatINR(l.unitPrice)}</td>
@@ -133,7 +143,12 @@ export default function InvoicePrintPage({ source = 'staff' }: { source?: 'staff
           {[
             ['Subtotal', formatINR(inv.subtotal)],
             ...(inv.discountTotal ? [['Discount', `−${formatINR(inv.discountTotal)}`]] : []),
-            ['Tax', formatINR(inv.taxTotal)],
+            ...(gst.kind === 'INTRA'
+              ? [
+                  ['CGST', formatINR(gst.cgst)],
+                  ['SGST', formatINR(gst.sgst)],
+                ]
+              : [['IGST', formatINR(gst.igst)]]),
           ].map(([k, v]) => (
             <div key={k} className="flex justify-between py-1">
               <span>{k}</span>
@@ -172,8 +187,17 @@ export default function InvoicePrintPage({ source = 'staff' }: { source?: 'staff
           </div>
         )}
 
-        <div className="mt-12" style={{ fontSize: 11, color: '#5B6B64', borderTop: `1px solid ${brand.line}`, paddingTop: 12 }}>
-          Please pay by {fmt(inv.dueDate)} and quote {inv.number} with your payment. Amounts in Indian rupees.
+        <div className="mt-12 flex items-end justify-between gap-6" style={{ fontSize: 11, color: '#5B6B64', borderTop: `1px solid ${brand.line}`, paddingTop: 12 }}>
+          <div style={{ maxWidth: 420, lineHeight: 1.6 }}>
+            Please pay by {fmt(inv.dueDate)} and quote {inv.number} with your payment. Amounts in Indian rupees.
+            {inv.status === 'CONFIRMED' && balance > 0 && (
+              <>
+                <br />
+                Scan the QR with any UPI app to pay {formatINR(balance)} to {company.upiId}.
+              </>
+            )}
+          </div>
+          {inv.status === 'CONFIRMED' && balance > 0 && <UpiQr amount={balance} invoiceNumber={inv.number} size={104} compact />}
         </div>
       </div>
     </div>

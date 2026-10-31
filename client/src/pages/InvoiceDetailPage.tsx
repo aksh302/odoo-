@@ -1,5 +1,5 @@
-import { ArrowLeftOutlined, DownloadOutlined, MailOutlined, PrinterOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Col, Descriptions, Input, Modal, Popconfirm, Result, Row, Skeleton, Space, Table, Tag, Tooltip, Typography } from 'antd'
+import { ArrowLeftOutlined, BellOutlined, DownloadOutlined, MailOutlined, PrinterOutlined, WhatsAppOutlined } from '@ant-design/icons'
+import { Alert, App, Button, Card, Col, Descriptions, Dropdown, Input, Modal, Popconfirm, Result, Row, Skeleton, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { useCallback, useEffect, useState } from 'react'
@@ -11,6 +11,9 @@ import { useIsAdmin } from '../auth/AuthContext'
 import { brand } from '../brand/theme'
 import { RecordPaymentModal } from '../components/RecordPaymentModal'
 import { InvoiceStatusBadge } from '../components/StatusBadge'
+import { UpiQr } from '../components/UpiQr'
+import { gstSplit } from '../lib/gst'
+import { whatsappLink } from '../lib/reminders'
 import { formatINR } from '../lib/money'
 import type { InvoiceLine, Payment } from '../lib/types'
 
@@ -43,6 +46,7 @@ export default function InvoiceDetailPage() {
   const { invoice: inv, lines, payments } = data
   const balance = inv.total - inv.amountPaid
   const c = inv.customerSnapshot
+  const gst = gstSplit(inv.taxTotal, c.taxId)
 
   const act = async (key: string, fn: () => Promise<unknown>, done: string) => {
     setBusy(key)
@@ -158,6 +162,24 @@ export default function InvoiceDetailPage() {
               Record payment
             </Button>
           )}
+          {inv.status === 'CONFIRMED' && balance > 0 && (
+            <Dropdown
+              menu={{
+                items: [
+                  { key: 'EMAIL', icon: <MailOutlined />, label: 'Email reminder' },
+                  { key: 'WHATSAPP', icon: <WhatsAppOutlined />, label: whatsappLink(inv) ? 'WhatsApp reminder' : 'WhatsApp (no phone number on file)', disabled: !whatsappLink(inv) },
+                ],
+                onClick: ({ key }) => {
+                  if (key === 'WHATSAPP') window.open(whatsappLink(inv)!, '_blank', 'noopener')
+                  act('remind', () => billingApi.remind(inv.id, key as 'EMAIL' | 'WHATSAPP'), key === 'EMAIL' ? `Reminder emailed to ${c.email ?? 'the customer'}` : 'WhatsApp opened with the reminder. Logged on the invoice.')
+                },
+              }}
+            >
+              <Button icon={<BellOutlined />} loading={busy === 'remind'} type={inv.overdue ? 'primary' : 'default'} ghost={inv.overdue}>
+                Remind
+              </Button>
+            </Dropdown>
+          )}
           {(inv.status === 'CONFIRMED' || inv.status === 'PAID') && (
             <Button icon={<MailOutlined />} loading={busy === 'send'} onClick={() => act('send', () => billingApi.sendInvoice(inv.id), `Invoice emailed to ${c.email ?? 'the customer'}`)}>
               {inv.emailedAt ? 'Resend' : 'Send'}
@@ -206,7 +228,7 @@ export default function InvoiceDetailPage() {
             <div style={{ fontFamily: brand.fontDisplay, fontSize: 34, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.2 }}>
               {formatINR(inv.status === 'CANCELLED' ? 0 : inv.status === 'PAID' ? inv.total : balance)}
             </div>
-            <Typography.Text style={inv.overdue ? { color: '#A86A0F', fontWeight: 600 } : undefined} type={inv.overdue ? undefined : 'secondary'}>
+            <Typography.Text style={inv.overdue ? { color: '#8A5A0C', fontWeight: 600 } : undefined} type={inv.overdue ? undefined : 'secondary'}>
               {inv.overdue
                 ? `Due ${fmt(inv.dueDate)}, ${dayjs().diff(dayjs(inv.dueDate), 'day')} days late`
                 : inv.status === 'PAID'
@@ -214,6 +236,12 @@ export default function InvoiceDetailPage() {
                   : `Due ${fmt(inv.dueDate)}`}
             </Typography.Text>
           </Card>
+
+          {inv.status === 'CONFIRMED' && balance > 0 && (
+            <Card className="mt-6">
+              <UpiQr amount={balance} invoiceNumber={inv.number} size={132} />
+            </Card>
+          )}
 
           <Card title="Bill to" className="mt-6">
             <div className="font-medium">{c.company || c.name}</div>
@@ -225,6 +253,7 @@ export default function InvoiceDetailPage() {
               <Descriptions.Item label="Subscription">
                 <Typography.Link onClick={() => navigate(`/subscriptions/${inv.subscriptionId}`)}>{inv.subscriptionNumber}</Typography.Link>
               </Descriptions.Item>
+              <Descriptions.Item label="Place of supply">{gst.placeOfSupply}</Descriptions.Item>
               <Descriptions.Item label="Issued">{fmt(inv.createdAt)}</Descriptions.Item>
               <Descriptions.Item label="Emailed">{inv.emailedAt ? fmt(inv.emailedAt) : 'Not yet'}</Descriptions.Item>
             </Descriptions>
@@ -237,13 +266,33 @@ export default function InvoiceDetailPage() {
             <div className="ml-auto mt-4" style={{ maxWidth: 320 }}>
               {totalRow('Subtotal', formatINR(inv.subtotal))}
               {inv.discountTotal > 0 && totalRow('Discount', `−${formatINR(inv.discountTotal)}`)}
-              {totalRow('Tax', formatINR(inv.taxTotal))}
+              {gst.kind === 'INTRA' ? (
+                <>
+                  {totalRow('CGST', formatINR(gst.cgst))}
+                  {totalRow('SGST', formatINR(gst.sgst))}
+                </>
+              ) : (
+                totalRow('IGST', formatINR(gst.igst))
+              )}
               <div className="my-2 border-0 border-t border-solid" style={{ borderColor: brand.line }} />
               {totalRow('Total', formatINR(inv.total), true)}
               {inv.amountPaid > 0 && totalRow('Paid', `−${formatINR(inv.amountPaid)}`)}
               {inv.status !== 'CANCELLED' && totalRow('Balance due', formatINR(balance), true)}
             </div>
           </Card>
+
+          {(inv.reminders?.length ?? 0) > 0 && (
+            <Card title="Reminders sent" className="mb-6" size="small">
+              <ul className="m-0 pl-5 text-sm" style={{ lineHeight: 1.8 }}>
+                {inv.reminders!.map((r) => (
+                  <li key={r.at + r.channel}>
+                    {dayjs(r.at).format('D MMM YYYY, h:mm a')}: {r.channel === 'WHATSAPP' ? 'WhatsApp' : 'Email'}
+                    {r.by ? ` by ${r.by}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           <Card title="Payments">
             <Table<Payment>

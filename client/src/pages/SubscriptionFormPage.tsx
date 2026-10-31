@@ -182,6 +182,7 @@ export default function SubscriptionFormPage() {
                     <Select
                       allowClear
                       placeholder="Start from scratch"
+            aria-label="Start from scratch"
                       options={templates.map((t) => ({ value: t.id, label: t.name }))}
                       onChange={(v) => applyTemplate(v)}
                     />

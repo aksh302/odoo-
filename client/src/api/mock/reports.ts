@@ -22,6 +22,8 @@ export interface Summary {
   aging: { d0_30: number; d31_60: number; d60plus: number }
   counts: { paid: number; outstanding: number; overdue: number }
   revenueByMonth: { month: string; collected: number }[]
+  /** How MRR moved this calendar month */
+  mrrMovement: { newMrr: number; newCount: number; pausedMrr: number; pausedCount: number; closedMrr: number; closedCount: number }
 }
 
 function summarize(q: Record<string, any>): Summary {
@@ -33,14 +35,18 @@ function summarize(q: Record<string, any>): Summary {
   const subOk = (s: { customerId: number; planId: number }) => (!customerId || s.customerId === customerId) && (!planId || s.planId === planId)
   const subById = new Map(subs.map((s) => [s.id, s]))
 
+  const monthly = (s: (typeof subs)[number]) => {
+    const plan = plans.find((p) => p.id === s.planId)!
+    return (plan.price + s.lines.reduce((a, l) => a + l.amount, 0)) * TO_MONTHLY[plan.billingPeriod]
+  }
   const active = subs.filter((s) => s.status === 'ACTIVE' && subOk(s))
-  const mrr = Math.round(
-    active.reduce((sum, s) => {
-      const plan = plans.find((p) => p.id === s.planId)!
-      const recurring = plan.price + s.lines.reduce((a, l) => a + l.amount, 0)
-      return sum + recurring * TO_MONTHLY[plan.billingPeriod]
-    }, 0),
-  )
+  const mrr = Math.round(active.reduce((sum, s) => sum + monthly(s), 0))
+
+  const month = dayjs().format('YYYY-MM')
+  const started = subs.filter((s) => subOk(s) && (s.status === 'ACTIVE' || s.status === 'PAUSED') && s.startDate.startsWith(month))
+  const paused = subs.filter((s) => subOk(s) && s.status === 'PAUSED' && s.pausedAt?.startsWith(month))
+  const closed = subs.filter((s) => subOk(s) && s.status === 'CLOSED' && s.closedAt?.startsWith(month))
+  const sum = (list: typeof subs) => Math.round(list.reduce((a, s) => a + monthly(s), 0))
 
   const invs = invoices.filter((i) => {
     const s = subById.get(i.subscriptionId)
@@ -78,6 +84,14 @@ function summarize(q: Record<string, any>): Summary {
     aging,
     counts: { paid: invs.filter((i) => i.status === 'PAID').length, outstanding: open.length, overdue: overdue.length },
     revenueByMonth: months,
+    mrrMovement: {
+      newMrr: sum(started),
+      newCount: started.length,
+      pausedMrr: sum(paused),
+      pausedCount: paused.length,
+      closedMrr: sum(closed),
+      closedCount: closed.length,
+    },
   }
 }
 

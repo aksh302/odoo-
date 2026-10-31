@@ -1,4 +1,4 @@
-import { SearchOutlined } from '@ant-design/icons'
+import { BellOutlined, SearchOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, DatePicker, Input, Popconfirm, Segmented, Space, Switch, Table, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
@@ -90,6 +90,7 @@ export default function InvoicesPage() {
           {i.overdue && (
             <Typography.Text type="danger" className="block text-xs">
               {dayjs().diff(dayjs(i.dueDate), 'day')} days late
+              {i.reminders?.length ? `, reminded ${i.reminders.length}×` : ''}
             </Typography.Text>
           )}
         </span>
@@ -114,6 +115,22 @@ export default function InvoicesPage() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <Typography.Title level={3}>Invoices</Typography.Title>
         <Space wrap>
+          <Popconfirm
+            title="Email a reminder for every overdue invoice?"
+            description="Invoices already reminded by email today are skipped."
+            okText="Send reminders"
+            onConfirm={async () => {
+              try {
+                const n = await billingApi.remindOverdue()
+                message.success(n ? `Sent ${n} reminder${n === 1 ? '' : 's'}` : 'Every overdue invoice was already reminded today')
+                list.reload()
+              } catch (err) {
+                message.error(parseError(err).message)
+              }
+            }}
+          >
+            <Button icon={<BellOutlined />}>Remind all overdue</Button>
+          </Popconfirm>
           {selected.length > 0 && (
             <Button loading={confirming} onClick={() => confirmDrafts(selected)}>
               Confirm {selected.length} selected
@@ -134,6 +151,7 @@ export default function InvoicesPage() {
             allowClear
             prefix={<SearchOutlined />}
             placeholder="Invoice, customer or subscription"
+            aria-label="Invoice, customer or subscription"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -144,7 +162,7 @@ export default function InvoicesPage() {
             onChange={(r) => setRange(r)}
           />
           <Space>
-            <Switch size="small" checked={overdue} onChange={setOverdue} />
+            <Switch size="small" checked={overdue} onChange={setOverdue} aria-label="Overdue only" />
             <span>Overdue only</span>
           </Space>
         </div>

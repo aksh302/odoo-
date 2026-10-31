@@ -75,6 +75,7 @@ export default function TemplatesPage() {
           allowClear
           prefix={<SearchOutlined />}
           placeholder="Search templates"
+            aria-label="Search templates"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />

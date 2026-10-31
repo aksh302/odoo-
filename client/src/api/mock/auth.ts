@@ -29,15 +29,28 @@ export const customers: User[] = Array.from({ length: 45 }, (_, i) => ({
     company: `${COMPANIES[i % COMPANIES.length]} ${Math.floor(i / 5) + 1}`,
     phone: `98400${String(10000 + i).slice(-5)}`,
     billingAddress: 'Chennai, Tamil Nadu',
-    taxId: i % 3 === 0 ? null : `33ABCDE${1000 + i}F1Z5`,
+    // Mostly Tamil Nadu buyers, some in Karnataka and Maharashtra (IGST applies to those)
+    taxId: i % 3 === 0 ? null : `${i % 4 === 1 ? '29' : i % 4 === 2 ? '27' : '33'}ABCDE${1000 + i}F1Z5`,
   },
 }))
 
 const tokenFor = (u: User) => `mock-${u.id}`
 
 export function userFromToken(authHeader: string): User | undefined {
-  const id = Number(authHeader.replace('Bearer mock-', ''))
-  return users.find((u) => u.id === id)
+  const token = authHeader.replace('Bearer ', '')
+  if (token.startsWith('mock-')) {
+    const id = Number(token.replace('mock-', ''))
+    return users.find((u) => u.id === id)
+  }
+  // Mixed mode: a real JWT from the backend. Read its role (no signature check, mock only)
+  // and act as the matching demo user so mock screens still work.
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    const role = String(payload.role ?? '').toUpperCase()
+    return users.find((u) => u.role === role)
+  } catch {
+    return undefined
+  }
 }
 
 export const authRoutes: MockRoutes = {

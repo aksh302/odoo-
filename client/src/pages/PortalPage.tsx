@@ -1,5 +1,5 @@
-import { DownloadOutlined } from '@ant-design/icons'
-import { App, Button, Card, Drawer, Empty, Form, Pagination, Popconfirm, Skeleton, Space, Tabs, Tooltip, Typography } from 'antd'
+import { DownloadOutlined, QrcodeOutlined } from '@ant-design/icons'
+import { App, Button, Card, Drawer, Empty, Form, Modal, Pagination, Popconfirm, Skeleton, Space, Tabs, Tooltip, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { useCallback, useEffect, useState } from 'react'
 import type React from 'react'
@@ -15,6 +15,7 @@ import { InvoiceEstimate } from '../components/InvoiceEstimate'
 import { LinesEditor } from '../components/LinesEditor'
 import type { LineValue } from '../components/LinesEditor'
 import { InvoiceStatusBadge, SubscriptionStatusBadge } from '../components/StatusBadge'
+import { UpiQr } from '../components/UpiQr'
 import { useCatalog } from '../hooks/useCatalog'
 import { usePagedList } from '../hooks/usePagedList'
 import { availableActions, cycleInfo } from '../lib/cycle'
@@ -101,7 +102,7 @@ function BalanceBanner({ onShowInvoices }: { onShowInvoices: () => void }) {
         <div>
           <Typography.Text type="secondary">To pay</Typography.Text>
           <div style={{ fontFamily: brand.fontDisplay, fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.15 }}>{formatINR(owed)}</div>
-          <Typography.Text style={overdue.length ? { color: '#A86A0F', fontWeight: 600 } : undefined}>
+          <Typography.Text style={overdue.length ? { color: '#8A5A0C', fontWeight: 600 } : undefined}>
             {overdue.length
               ? `${overdue.length} invoice${overdue.length === 1 ? ' is' : 's are'} overdue`
               : `Next payment due ${fmt(next?.dueDate)}`}
@@ -270,9 +271,11 @@ function Rows<T extends { id: number }>({
 
 function MyInvoices() {
   const { message } = App.useApp()
+  const [paying, setPaying] = useState<Invoice | null>(null)
   const list = usePagedList<Invoice>('/portal/invoices', {}, 10)
   const pg = list.tableProps.pagination
   return (
+    <>
     <Rows<Invoice>
       rows={list.rows}
       loading={list.loading}
@@ -295,19 +298,33 @@ function MyInvoices() {
               <div className="mt-1 text-sm">
                 {formatINR(i.total)}
                 {i.status === 'CONFIRMED' && balance > 0 && (
-                  <span style={i.overdue ? { color: '#A86A0F', fontWeight: 600 } : undefined}>
+                  <span style={i.overdue ? { color: '#8A5A0C', fontWeight: 600 } : undefined}>
                     , {formatINR(balance)} due {fmt(i.dueDate)}
                   </span>
                 )}
               </div>
             </div>
-            <Button size="small" icon={<DownloadOutlined />} onClick={() => portalApi.openPdf(i.id).catch((err) => message.error(parseError(err).message))}>
-              PDF
-            </Button>
+            <Space orientation="vertical" size={6} align="end">
+              {i.status === 'CONFIRMED' && balance > 0 && (
+                <Button size="small" type="primary" icon={<QrcodeOutlined />} onClick={() => setPaying(i)}>
+                  Pay by UPI
+                </Button>
+              )}
+              <Button size="small" icon={<DownloadOutlined />} onClick={() => portalApi.openPdf(i.id).catch((err) => message.error(parseError(err).message))}>
+                PDF
+              </Button>
+            </Space>
           </div>
         )
       }}
     />
+    <Modal open={!!paying} onCancel={() => setPaying(null)} footer={null} title={paying ? `Pay ${paying.number}` : ''} destroyOnHidden>
+      {paying && <UpiQr amount={paying.total - paying.amountPaid} invoiceNumber={paying.number} />}
+      <Typography.Paragraph type="secondary" className="mb-0 mt-4 text-xs">
+        Your payment shows here once Brightloop records it, usually the same day.
+      </Typography.Paragraph>
+    </Modal>
+    </>
   )
 }
 

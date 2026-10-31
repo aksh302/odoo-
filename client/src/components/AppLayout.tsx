@@ -8,6 +8,7 @@ import {
   LogoutOutlined,
   PercentageOutlined,
   QuestionCircleOutlined,
+  ReloadOutlined,
   ProfileOutlined,
   ScheduleOutlined,
   SyncOutlined,
@@ -19,8 +20,9 @@ import { Avatar, Button, Dropdown, Grid, Layout, Menu, Tag } from 'antd'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { USE_MOCKS } from '../api/client'
+import { MIXED_MODE, USE_MOCKS } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { ErrorBoundary } from './ErrorBoundary'
 import { Logo } from '../brand/Logo'
 import type { Role } from '../lib/types'
 
@@ -89,7 +91,9 @@ export function AppLayout() {
       <Layout>
         <TopBar />
         <Content style={{ padding: phone ? '20px 16px' : '28px 32px' }}>
-          <Outlet />
+          <ErrorBoundary key={pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </Content>
       </Layout>
     </Layout>
@@ -98,11 +102,14 @@ export function AppLayout() {
 
 /** Customer portal shell: no sidebar, works down to 360 px. */
 export function PortalLayout() {
+  const location = useLocation()
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <TopBar brand />
       <Content className="mx-auto w-full max-w-5xl" style={{ padding: 16 }}>
-        <Outlet />
+        <ErrorBoundary key={location.pathname}>
+          <Outlet />
+        </ErrorBoundary>
       </Content>
     </Layout>
   )
@@ -127,20 +134,33 @@ function TopBar({ brand }: { brand?: boolean }) {
         </Button>
       )}
       {USE_MOCKS && (
-        <Tag color="warning" className="hidden sm:inline-block">
-          Mock data
+        <Tag className="hidden sm:inline-block" style={{ color: '#7A4F05', background: '#FFF4DE', borderColor: '#F1D49B' }}>
+          {MIXED_MODE ? 'Real + mock data' : 'Mock data'}
         </Tag>
       )}
       <Dropdown
         menu={{
-          items: [{ key: 'logout', icon: <LogoutOutlined />, label: 'Log out' }],
-          onClick: () => {
+          items: [
+            ...(USE_MOCKS
+              ? [
+                  { key: 'reset', icon: <ReloadOutlined />, label: 'Reset demo data' },
+                  { type: 'divider' as const },
+                ]
+              : []),
+            { key: 'logout', icon: <LogoutOutlined />, label: 'Log out' },
+          ],
+          onClick: ({ key }) => {
+            // Mock data lives in memory, so reloading puts every record back to its starting state.
+            if (key === 'reset') {
+              window.location.reload()
+              return
+            }
             logout()
             navigate('/login')
           },
         }}
       >
-        <Button type="text" className="flex items-center gap-2">
+        <Button type="text" className="flex items-center gap-2" aria-label={`Account menu for ${user?.name ?? 'you'}`}>
           <Avatar size="small" icon={<UserOutlined />} />
           <span className="hidden sm:inline">{user?.name}</span>
           <Tag className="hidden sm:inline-block">{user?.role === 'ADMIN' ? 'Admin' : user?.role === 'STAFF' ? 'Staff' : 'Customer'}</Tag>

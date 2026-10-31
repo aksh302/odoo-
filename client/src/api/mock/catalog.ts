@@ -17,11 +17,11 @@ let variants: Variant[] = [
 ]
 
 export const products: Omit<Product, 'variants' | 'tax'>[] = [
-  { id: 1, name: 'Brightloop ERP', type: 'Service', salesPrice: 249900, costPrice: 90000, notes: 'Core ERP seat', taxId: 1, isArchived: false },
-  { id: 2, name: 'Brightloop CRM', type: 'Service', salesPrice: 149900, costPrice: 50000, notes: null, taxId: 1, isArchived: false },
-  { id: 3, name: 'Analytics Add-on', type: 'Add-on', salesPrice: 49900, costPrice: 10000, notes: 'Switch on/off any time', taxId: 1, isArchived: false },
-  { id: 4, name: 'Priority Support', type: 'Add-on', salesPrice: 99900, costPrice: 40000, notes: null, taxId: 2, isArchived: false },
-  { id: 5, name: 'Onboarding Pack', type: 'Service', salesPrice: 500000, costPrice: 200000, notes: 'Legacy', taxId: 1, isArchived: true },
+  { id: 1, name: 'Brightloop ERP', type: 'Service', salesPrice: 249900, costPrice: 90000, notes: 'Core ERP seat', sacCode: '997331', taxId: 1, isArchived: false },
+  { id: 2, name: 'Brightloop CRM', type: 'Service', salesPrice: 149900, costPrice: 50000, notes: null, sacCode: '997331', taxId: 1, isArchived: false },
+  { id: 3, name: 'Analytics Add-on', type: 'Add-on', salesPrice: 49900, costPrice: 10000, notes: 'Switch on/off any time', sacCode: '997331', taxId: 1, isArchived: false },
+  { id: 4, name: 'Priority Support', type: 'Add-on', salesPrice: 99900, costPrice: 40000, notes: null, sacCode: '998316', taxId: 2, isArchived: false },
+  { id: 5, name: 'Onboarding Pack', type: 'Service', salesPrice: 500000, costPrice: 200000, notes: 'Legacy', sacCode: '998311', taxId: 1, isArchived: true },
 ]
 
 const year = new Date().getFullYear()

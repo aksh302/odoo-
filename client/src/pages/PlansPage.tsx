@@ -185,23 +185,25 @@ export default function PlansPage() {
             allowClear
             prefix={<SearchOutlined />}
             placeholder="Search plans"
+            aria-label="Search plans"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           <Select
             allowClear
             placeholder="Any period"
+            aria-label="Any period"
             style={{ width: 150 }}
             options={PERIOD_OPTIONS}
             value={period}
             onChange={setPeriod}
           />
           <Space>
-            <Switch size="small" checked={availableOnly} onChange={setAvailableOnly} />
+            <Switch size="small" checked={availableOnly} onChange={setAvailableOnly} aria-label="Available today" />
             <span>Available today</span>
           </Space>
           <Space>
-            <Switch size="small" checked={showArchived} onChange={setShowArchived} />
+            <Switch size="small" checked={showArchived} onChange={setShowArchived} aria-label="Show archived" />
             <span>Show archived</span>
           </Space>
         </div>

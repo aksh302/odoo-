@@ -27,8 +27,16 @@ export const antdTheme: ThemeConfig = {
     colorPrimary: brand.green,
     colorLink: brand.green,
     colorInfo: brand.green,
-    colorWarning: brand.marigold,
+    // Warning text (tags, alerts) must stay readable on light backgrounds, so it's a deeper amber.
+    // Marigold itself is still used for rings, bars and borders via brand.marigold.
+    colorWarning: '#9A6408',
+    colorError: '#C2261B', // readable red for danger buttons and error text
     colorText: brand.slate,
+    // Secondary and placeholder greys darkened to pass WCAG AA (4.5:1) on white.
+    colorTextSecondary: '#56655E',
+    colorTextDescription: '#56655E',
+    colorTextTertiary: '#63726B',
+    colorTextPlaceholder: '#66756E',
     colorBgLayout: brand.sage,
     colorBorderSecondary: brand.line,
     fontFamily: brand.fontBody,

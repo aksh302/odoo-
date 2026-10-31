@@ -57,6 +57,8 @@ export interface Product {
   salesPrice: number
   costPrice: number
   notes?: string | null
+  /** GST service code (SAC), printed on invoice lines */
+  sacCode?: string | null
   taxId?: number | null
   tax?: Tax | null
   isArchived: boolean
@@ -103,6 +105,7 @@ export interface SubscriptionLine {
   productId: number
   variantId?: number | null
   description: string // snapshot: product name + variant
+  sacCode?: string | null
   quantity: number
   unitPrice: number // paise snapshot = salesPrice + extraPrice
   taxId?: number | null
@@ -125,6 +128,7 @@ export interface Subscription {
   paymentTerms: number // days
   anchorDay?: number | null
   nextBillingDate?: string | null
+  closedAt?: string | null
   createdAt?: string
   /** list endpoint convenience: plan fee + line amounts, pre-tax */
   recurringAmount?: number
@@ -149,6 +153,7 @@ export interface InvoiceLine {
   id: number
   productId?: number | null // null for the plan-fee line
   description: string
+  sacCode?: string | null
   quantity: number
   unitPrice: number
   amount: number
@@ -159,9 +164,16 @@ export interface InvoiceLine {
   taxAmount: number
 }
 
+export interface Reminder {
+  at: string
+  channel: 'EMAIL' | 'WHATSAPP'
+  by?: string | null
+}
+
 export interface CustomerSnapshot {
   name: string
   email?: string
+  phone?: string | null
   company?: string | null
   billingAddress?: string | null
   taxId?: string | null
@@ -185,6 +197,8 @@ export interface Invoice {
   status: InvoiceStatus
   overdue?: boolean // derived by the server
   emailedAt?: string | null
+  /** payment reminders sent so far, newest first */
+  reminders?: Reminder[]
   createdAt: string
 }
 

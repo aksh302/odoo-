@@ -1,36 +1,46 @@
-import { Button, Result } from 'antd'
+import { Button, Result, Spin } from 'antd'
+import { lazy, Suspense } from 'react'
 import { Link, Navigate, Route, Routes } from 'react-router-dom'
 import { homeFor, useAuth } from './auth/AuthContext'
 import { ProtectedRoute, PublicOnlyRoute } from './auth/ProtectedRoute'
 import { AppLayout, PortalLayout } from './components/AppLayout'
-import AuditPage from './pages/admin/AuditPage'
-import DiscountsPage from './pages/admin/DiscountsPage'
-import StaffPage from './pages/admin/StaffPage'
-import TaxesPage from './pages/admin/TaxesPage'
-import CustomerDetailPage from './pages/CustomerDetailPage'
-import CustomersPage from './pages/CustomersPage'
-import DashboardPage from './pages/DashboardPage'
-import BillingPage from './pages/BillingPage'
-import InvoiceDetailPage from './pages/InvoiceDetailPage'
-import InvoicePrintPage from './pages/InvoicePrintPage'
-import HelpPage from './pages/HelpPage'
-import InvoicesPage from './pages/InvoicesPage'
-import PaymentsPage from './pages/PaymentsPage'
-import PlansPage from './pages/PlansPage'
-import PortalPage from './pages/PortalPage'
-import SubscriptionDetailPage from './pages/SubscriptionDetailPage'
-import SubscriptionFormPage from './pages/SubscriptionFormPage'
-import SubscriptionsPage from './pages/SubscriptionsPage'
-import TemplatesPage from './pages/TemplatesPage'
-import ProductsPage from './pages/ProductsPage'
-import ForgotPage from './pages/auth/ForgotPage'
 import LoginPage from './pages/auth/LoginPage'
-import ResetPage from './pages/auth/ResetPage'
-import SignupPage from './pages/auth/SignupPage'
+
+// Pages load on first visit, so the login screen appears faster.
+const AuditPage = lazy(() => import('./pages/admin/AuditPage'))
+const BillingPage = lazy(() => import('./pages/BillingPage'))
+const CustomerDetailPage = lazy(() => import('./pages/CustomerDetailPage'))
+const CustomersPage = lazy(() => import('./pages/CustomersPage'))
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const DiscountsPage = lazy(() => import('./pages/admin/DiscountsPage'))
+const ForgotPage = lazy(() => import('./pages/auth/ForgotPage'))
+const HelpPage = lazy(() => import('./pages/HelpPage'))
+const InvoiceDetailPage = lazy(() => import('./pages/InvoiceDetailPage'))
+const InvoicePrintPage = lazy(() => import('./pages/InvoicePrintPage'))
+const InvoicesPage = lazy(() => import('./pages/InvoicesPage'))
+const PaymentsPage = lazy(() => import('./pages/PaymentsPage'))
+const PlansPage = lazy(() => import('./pages/PlansPage'))
+const PortalPage = lazy(() => import('./pages/PortalPage'))
+const ProductsPage = lazy(() => import('./pages/ProductsPage'))
+const ResetPage = lazy(() => import('./pages/auth/ResetPage'))
+const SignupPage = lazy(() => import('./pages/auth/SignupPage'))
+const StaffPage = lazy(() => import('./pages/admin/StaffPage'))
+const SubscriptionDetailPage = lazy(() => import('./pages/SubscriptionDetailPage'))
+const SubscriptionFormPage = lazy(() => import('./pages/SubscriptionFormPage'))
+const SubscriptionsPage = lazy(() => import('./pages/SubscriptionsPage'))
+const TaxesPage = lazy(() => import('./pages/admin/TaxesPage'))
+const TemplatesPage = lazy(() => import('./pages/TemplatesPage'))
 
 // Every route from SRS v1.1 section 9.7.
 export function AppRoutes() {
   return (
+    <Suspense
+      fallback={
+        <div className="flex h-full min-h-[60vh] items-center justify-center">
+          <Spin size="large" />
+        </div>
+      }
+    >
     <Routes>
       {/* Public */}
       <Route element={<PublicOnlyRoute />}>
@@ -86,6 +96,7 @@ export function AppRoutes() {
         element={<Result status="404" title="Page not found" extra={<Link to="/"><Button type="primary">Go home</Button></Link>} />}
       />
     </Routes>
+    </Suspense>
   )
 }
 

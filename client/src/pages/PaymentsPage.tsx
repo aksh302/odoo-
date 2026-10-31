@@ -1,5 +1,5 @@
-import { ScanOutlined, SearchOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, DatePicker, Input, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
+import { FileTextOutlined, ScanOutlined, SearchOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, DatePicker, Input, Space, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { methodLabel } from '../api/billing'
 import { ReadPaymentDrawer } from '../components/ReadPaymentDrawer'
+import { StatementImportDrawer } from '../components/StatementImportDrawer'
 import { RecordPaymentModal } from '../components/RecordPaymentModal'
 import { InvoiceStatusBadge } from '../components/StatusBadge'
 import { usePagedList } from '../hooks/usePagedList'
@@ -19,14 +20,20 @@ const fmt = (d: string) => dayjs(d).format('D MMM YYYY')
 export default function PaymentsPage() {
   const [tab, setTab] = useState('outstanding')
   const [reading, setReading] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [version, setVersion] = useState(0)
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <Typography.Title level={3}>Payments</Typography.Title>
-        <Button type="primary" icon={<ScanOutlined />} onClick={() => setReading(true)}>
-          Read a payment
-        </Button>
+        <Space wrap>
+          <Button icon={<FileTextOutlined />} onClick={() => setImporting(true)}>
+            Import bank statement
+          </Button>
+          <Button type="primary" icon={<ScanOutlined />} onClick={() => setReading(true)}>
+            Read a payment
+          </Button>
+        </Space>
       </div>
       <Card>
         <Tabs
@@ -38,6 +45,15 @@ export default function PaymentsPage() {
           ]}
         />
       </Card>
+      <StatementImportDrawer
+        open={importing}
+        onClose={() => setImporting(false)}
+        onDone={() => {
+          setImporting(false)
+          setVersion((v) => v + 1)
+          setTab('received')
+        }}
+      />
       <ReadPaymentDrawer
         open={reading}
         onClose={() => setReading(false)}
@@ -96,6 +112,7 @@ function Outstanding() {
         allowClear
         prefix={<SearchOutlined />}
         placeholder="Invoice or customer"
+            aria-label="Invoice or customer"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
@@ -166,6 +183,7 @@ function Received() {
           allowClear
           prefix={<SearchOutlined />}
           placeholder="Invoice, customer or reference"
+            aria-label="Invoice, customer or reference"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />

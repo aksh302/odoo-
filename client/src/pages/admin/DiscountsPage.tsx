@@ -113,7 +113,7 @@ export default function DiscountsPage() {
             <span className="text-sm">
               {d.usedCount} of {d.usageLimit}
             </span>
-            <Progress percent={Math.round((d.usedCount / d.usageLimit) * 100)} showInfo={false} size="small" strokeColor={brand.green} />
+            <Progress percent={Math.round((d.usedCount / d.usageLimit) * 100)} showInfo={false} size="small" strokeColor={brand.green} aria-label={`${d.usedCount} of ${d.usageLimit} uses`} />
           </div>
         ) : (
           <span className="text-sm">{d.usedCount} times, no limit</span>
@@ -128,7 +128,7 @@ export default function DiscountsPage() {
           description={d.isActive ? 'It stops applying to new invoices. Existing invoices keep it.' : undefined}
           onConfirm={() => toggle(d)}
         >
-          <Switch size="small" checked={d.isActive} />
+          <Switch size="small" checked={d.isActive} aria-label={`${d.name} on`} />
         </Popconfirm>
       ),
     },
@@ -151,6 +151,7 @@ export default function DiscountsPage() {
           allowClear
           prefix={<SearchOutlined />}
           placeholder="Search discounts"
+            aria-label="Search discounts"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />

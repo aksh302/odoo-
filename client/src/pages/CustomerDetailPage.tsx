@@ -74,7 +74,7 @@ export default function CustomerDetailPage() {
   const stat = (label: string, value: string, warn = false) => (
     <div>
       <Typography.Text type="secondary">{label}</Typography.Text>
-      <div style={{ fontFamily: brand.fontDisplay, fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: warn ? '#A86A0F' : undefined }}>{value}</div>
+      <div style={{ fontFamily: brand.fontDisplay, fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: warn ? '#8A5A0C' : undefined }}>{value}</div>
     </div>
   )
 
@@ -108,7 +108,7 @@ export default function CustomerDetailPage() {
               {stat('Balance due', formatINR(owed), overdue.length > 0)}
             </div>
             {overdue.length > 0 && (
-              <Typography.Text className="mt-2 block text-sm" style={{ color: '#A86A0F' }}>
+              <Typography.Text className="mt-2 block text-sm" style={{ color: '#8A5A0C' }}>
                 {overdue.length} invoice{overdue.length === 1 ? '' : 's'} overdue
               </Typography.Text>
             )}

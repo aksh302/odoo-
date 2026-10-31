@@ -21,7 +21,12 @@ const INVOICE: Record<InvoiceStatus, { color: string; label: string }> = {
 
 export function SubscriptionStatusBadge({ status }: { status: SubscriptionStatus }) {
   const s = SUBSCRIPTION[status]
-  return <Tag color={s.color}>{s.label}</Tag>
+  // Orange text on the light orange tag is too faint to read; darken it (WCAG AA contrast).
+  return (
+    <Tag color={s.color} style={status === 'PAUSED' ? { color: '#8A4B00' } : undefined}>
+      {s.label}
+    </Tag>
+  )
 }
 
 /** `overdue` is derived on the server; it adds a red-outline "Overdue" tag. */

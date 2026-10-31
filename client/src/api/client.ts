@@ -1,9 +1,28 @@
 import axios from 'axios'
+import type { AxiosAdapter } from 'axios'
 import { mockAdapter } from './mock'
 
 export const TOKEN_KEY = 'bl_token'
 
 export const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true'
+
+/**
+ * Mixed mode, for when the backend is only partly done:
+ *   VITE_USE_MOCKS=true
+ *   VITE_REAL_API=/auth,/products,/plans
+ * Requests whose path starts with one of these go to the real server; everything else
+ * stays on mock data. Put /auth first: the mock then accepts the real login token.
+ */
+const REAL_PREFIXES = (import.meta.env.VITE_REAL_API || '')
+  .split(',')
+  .map((s: string) => s.trim())
+  .filter(Boolean)
+
+export const MIXED_MODE = USE_MOCKS && REAL_PREFIXES.length > 0
+
+const realAdapter = axios.getAdapter(['xhr', 'fetch'])
+const routedAdapter: AxiosAdapter = (config) =>
+  REAL_PREFIXES.some((p: string) => (config.url ?? '').startsWith(p)) ? realAdapter(config) : mockAdapter(config)
 
 /**
  * The ONE axios instance the whole app uses (SRS 9.7).
@@ -12,7 +31,7 @@ export const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true'
  */
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
-  ...(USE_MOCKS ? { adapter: mockAdapter } : {}),
+  ...(USE_MOCKS ? { adapter: MIXED_MODE ? routedAdapter : mockAdapter } : {}),
 })
 
 api.interceptors.request.use((config) => {

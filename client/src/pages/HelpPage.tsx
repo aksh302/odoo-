@@ -230,6 +230,8 @@ const SECTIONS: Section[] = [
           'Each line gets at most one discount: the biggest one that qualifies.',
           'Tax is worked out after the discount, line by line.',
           'Total = subtotal − discounts + tax. Due date = period start + payment terms.',
+          'GST: a customer in Tamil Nadu (or with no GSTIN) pays CGST + SGST, half each. A customer in another state pays IGST. The state comes from the first two digits of their GSTIN.',
+          'Each line shows its SAC code, set on the product.',
         ],
       },
       {
@@ -288,6 +290,45 @@ const SECTIONS: Section[] = [
         link: { to: '/payments', label: 'Read a payment' },
       },
       {
+        id: 'statement',
+        title: 'Import a bank statement',
+        roles: BACK,
+        summary: 'Match a whole statement at once instead of scrolling through it line by line.',
+        steps: [
+          'On Payments, click Import bank statement.',
+          'Drop the CSV your bank lets you download, or paste rows copied from a statement, then click Match payments.',
+          'Each credit shows its suggested invoice: Sure, Check (probably a part payment) or None. Change any match, untick rows you don’t want.',
+          'Click Record payments. A summary shows anything that couldn’t be saved.',
+        ],
+        rules: [
+          'Debits, charges and balance rows are ignored.',
+          'One statement line pays one invoice, and no invoice is used twice in the same import.',
+          'A credit is never recorded for more than the invoice’s balance.',
+        ],
+        link: { to: '/payments', label: 'Import a statement' },
+      },
+      {
+        id: 'upi',
+        title: 'UPI QR on invoices',
+        roles: ALL,
+        summary: 'Every unpaid invoice carries a UPI QR with the amount and invoice number filled in. Scan it with any UPI app to pay.',
+        rules: ['The invoice number travels with the payment, so it’s matched to the right invoice automatically.', 'Once an invoice is paid, the QR disappears.'],
+      },
+      {
+        id: 'reminders',
+        title: 'Chase overdue invoices',
+        roles: BACK,
+        summary: 'Send a payment reminder by email or WhatsApp from the invoice, or email every overdue invoice at once.',
+        steps: ['On an invoice, click Remind and choose Email or WhatsApp. WhatsApp opens with the message already written.', 'On Invoices, click Remind all overdue to email everyone who is late.'],
+        rules: [
+          'Only confirmed invoices with a balance can be chased.',
+          'Remind all overdue skips invoices already emailed today.',
+          'Every reminder is listed on the invoice and in the audit log.',
+          'Reminders get firmer once an invoice is more than 15 days late.',
+        ],
+        link: { to: '/invoices', label: 'Open Invoices' },
+      },
+      {
         id: 'void',
         title: 'Void a payment',
         roles: ADMIN,
@@ -312,6 +353,8 @@ const SECTIONS: Section[] = [
           'Outstanding and overdue are always as of today.',
           'Overdue by age groups late invoices into 1–30, 31–60 and over 60 days. Chase the oldest first.',
           'Export CSV downloads the numbers for the filters you’ve chosen.',
+          'How recurring revenue moved: start of month, plus new subscriptions, minus pauses and closures, gives today’s MRR.',
+          'Ending in the next 30 days lists active subscriptions about to expire, with one-click Renew.',
         ],
         link: { to: '/dashboard', label: 'Open Dashboard' },
       },
@@ -436,6 +479,7 @@ export default function HelpPage() {
           allowClear
           prefix={<SearchOutlined />}
           placeholder="Search, e.g. pause, discount, overdue"
+            aria-label="Search, e.g. pause, discount, overdue"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />

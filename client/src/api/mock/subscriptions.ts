@@ -33,6 +33,7 @@ export function snapshotLine(productId: number, variantId: number | null | undef
     productId,
     variantId: v?.id ?? null,
     description: v ? `${p.name} (${v.attribute}: ${v.value})` : p.name,
+    sacCode: p.sacCode ?? null,
     quantity,
     unitPrice,
     taxId: p.taxId ?? null,
@@ -49,6 +50,7 @@ export const planAvailable = (p: Plan, on = todayISO()) => !p.isArchived && p.st
 export const snapshotOf = (c: User) => ({
   name: c.name,
   email: c.email,
+  phone: c.profile?.phone ?? null,
   company: c.profile?.company ?? null,
   billingAddress: c.profile?.billingAddress ?? null,
   taxId: c.profile?.taxId ?? null,
@@ -105,6 +107,7 @@ function validateTemplate(b: any): MockResult | null {
 
 export interface SubRecord extends Subscription {
   lines: SubscriptionLine[]
+  pausedAt?: string | null
 }
 export const subs: SubRecord[] = []
 let subSeq = 0
@@ -139,6 +142,7 @@ function makeSub(i: number, status: SubscriptionStatus, planId: number, customer
       next = addPeriods(s.startDate, plan.billingPeriod, periods.length, s.anchorDay)
     }
     s.nextBillingDate = status === 'CLOSED' ? null : next
+    if (status === 'PAUSED') s.pausedAt = iso(today().subtract(5, 'day'))
     // Seed past invoices (latest 12 periods) into the ledger.
     const customer = findCustomer(s.customerId)!
     periods.slice(-12).forEach((ps, k, arr) => {
@@ -174,7 +178,7 @@ function makeSub(i: number, status: SubscriptionStatus, planId: number, customer
   const spec: [SubscriptionStatus, number, number][] = [
     // status, planId, start offset (days from today)
     ['ACTIVE', 1, -95], ['ACTIVE', 1, -40], ['ACTIVE', 2, -200], ['ACTIVE', 3, -20], ['ACTIVE', 1, -27],
-    ['ACTIVE', 1, -310], ['ACTIVE', 2, -30], ['ACTIVE', 3, -9], ['ACTIVE', 1, -61], ['ACTIVE', 1, -3],
+    ['ACTIVE', 1, -345], ['ACTIVE', 2, -30], ['ACTIVE', 3, -9], ['ACTIVE', 1, -61], ['ACTIVE', 1, -3],
     ['PAUSED', 1, -70], ['PAUSED', 3, -15],
     ['CONFIRMED', 1, 6], ['CONFIRMED', 2, 0],
     ['QUOTATION', 1, 10], ['QUOTATION', 2, 20], ['QUOTATION', 3, -25],
@@ -297,9 +301,11 @@ export function transition(s: SubRecord, body: any, ctx: MockCtx): MockResult {
     s.nextBillingDate = s.nextBillingDate && s.nextBillingDate > t ? s.nextBillingDate : t
   }
   if (to === 'PAUSED' && !plan.pausable) return fail(409, 'PLAN_FLAG_DISABLED', 'Plan does not allow pausing')
+  if (to === 'PAUSED') s.pausedAt = t
   if (to === 'CLOSED') {
     if (!plan.closable) return fail(409, 'PLAN_FLAG_DISABLED', 'Plan does not allow closing early')
     s.nextBillingDate = null
+    s.closedAt = t
   }
   audit(ctx, 'SUBSCRIPTION_STATUS', 'Subscription', s.id, s.number, { status: s.status }, { status: to })
   s.status = to
@@ -337,9 +343,11 @@ export const subscriptionRoutes: MockRoutes = {
   'GET /subscriptions': (ctx) => {
     const denied = backOffice(ctx)
     if (denied) return denied
-    const { status, customerId, planId, q = '' } = ctx.query
+    const { status, customerId, planId, q = '', expiringWithin } = ctx.query
+    const horizon = expiringWithin ? dayjs().add(Number(expiringWithin), 'day').format('YYYY-MM-DD') : null
     const all = subs
       .filter((s) => (status ? s.status === status : true))
+      .filter((s) => (horizon ? s.expiryDate >= todayISO() && s.expiryDate <= horizon : true))
       .filter((s) => (customerId ? s.customerId === Number(customerId) : true))
       .filter((s) => (planId ? s.planId === Number(planId) : true))
       .map(view)

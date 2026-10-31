@@ -41,3 +41,30 @@ body,
     --line-cols: 2.2fr 1.5fr 0.9fr 1fr 32px;
   }
 }
+
+/* Readable tag text (WCAG AA 4.5:1). Ant Design's preset tag text is too light on its tinted backgrounds. */
+.ant-tag-green,
+.ant-tag-success {
+  color: #1f6b52;
+}
+.ant-tag-orange,
+.ant-tag-warning,
+.ant-tag-gold {
+  color: #8a4b00;
+}
+.ant-tag-blue,
+.ant-tag-processing {
+  color: #0b4fb3;
+}
+.ant-tag-purple {
+  color: #5b2ba8;
+}
+.ant-tag-red,
+.ant-tag-error {
+  color: #a8071a;
+}
+/* Empty-table text: Ant Design's default grey is too faint. */
+.ant-empty-description,
+.ant-table-placeholder {
+  color: #56655e;
+}
