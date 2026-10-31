@@ -44,6 +44,7 @@ export const authRoutes: MockRoutes = {
   'POST /auth/login': ({ body }) => {
     const u = users.find((x) => x.email === body.email?.toLowerCase())
     if (!u || body.password !== DEMO_PASSWORD) return fail(401, 'UNAUTHENTICATED', 'Invalid email or password')
+    if (!u.isActive) return fail(403, 'FORBIDDEN', 'This account has been deactivated')
     return [200, { token: tokenFor(u), user: u }]
   },
   'POST /auth/signup': ({ body }) => {

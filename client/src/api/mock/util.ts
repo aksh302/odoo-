@@ -43,3 +43,36 @@ export const todayISO = () => new Date().toISOString().slice(0, 10)
 
 let seq = 1000
 export const nextId = () => ++seq
+
+// ---------- audit log (NFR-12) ----------
+
+export interface MockAudit {
+  id: number
+  at: string
+  userId: number | null
+  userName: string | null
+  action: string
+  entity: string
+  entityId: number
+  entityLabel: string | null
+  oldValue: unknown
+  newValue: unknown
+}
+
+export const auditLog: MockAudit[] = []
+
+/** Records who changed what. Call from any mock route that changes state. */
+export function audit(ctx: Pick<MockCtx, 'me'> | null, action: string, entity: string, entityId: number, entityLabel: string | null, oldValue: unknown, newValue: unknown) {
+  auditLog.unshift({
+    id: nextId(),
+    at: new Date().toISOString(),
+    userId: ctx?.me?.id ?? null,
+    userName: ctx?.me?.name ?? 'System',
+    action,
+    entity,
+    entityId,
+    entityLabel,
+    oldValue,
+    newValue,
+  })
+}

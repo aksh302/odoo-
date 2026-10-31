@@ -4,7 +4,7 @@ import { plans } from './catalog'
 import { applyPayment, buildInvoice, discounts, invoices, isOverdue, runs } from './ledger'
 import type { InvoiceRecord } from './ledger'
 import { findCustomer, snapshotOf, subs } from './subscriptions'
-import { contains, fail, nextId, paginate, requireRole, todayISO } from './util'
+import { audit, contains, fail, nextId, paginate, requireRole, todayISO } from './util'
 import type { MockCtx, MockRoutes } from './util'
 
 // Invoices, billing runs and payments — SRS 3.3, 8.1, 9.5, 9.6.
@@ -84,7 +84,9 @@ export const billingRoutes: MockRoutes = {
     try {
       // Mock behaves as DEMO_MODE=true: asOf is honoured.
       const asOf = ctx.body.asOf || todayISO()
-      return [200, runBilling(asOf, ctx.me?.name ?? 'user')]
+      const result = runBilling(asOf, ctx.me?.name ?? 'user')
+      audit(ctx, 'BILLING_RUN', 'BillingRun', result.runId, `Run as of ${asOf}`, null, { created: result.created, skipped: result.skipped, failed: result.failed })
+      return [200, result]
     } finally {
       running = false
     }
@@ -125,6 +127,7 @@ export const billingRoutes: MockRoutes = {
     const to = ctx.body.status
     if (to === 'CONFIRMED') {
       if (inv.status !== 'DRAFT') return fail(409, 'INVOICE_LOCKED', 'Only drafts can be confirmed')
+      audit(ctx, 'INVOICE_STATUS', 'Invoice', inv.id, inv.number, { status: inv.status }, { status: 'CONFIRMED' })
       inv.status = 'CONFIRMED'
     } else if (to === 'CANCELLED') {
       if (inv.status !== 'DRAFT' && inv.status !== 'CONFIRMED') return fail(409, 'INVOICE_LOCKED', 'This invoice cannot be cancelled')
@@ -134,6 +137,7 @@ export const billingRoutes: MockRoutes = {
         const d = discounts.find((x) => x.id === id)
         if (d && d.usedCount > 0) d.usedCount -= 1
       })
+      audit(ctx, 'INVOICE_STATUS', 'Invoice', inv.id, inv.number, { status: inv.status }, { status: 'CANCELLED' })
       inv.status = 'CANCELLED'
     } else {
       return fail(409, 'INVALID_TRANSITION', 'Unsupported status')
@@ -197,6 +201,7 @@ export const billingRoutes: MockRoutes = {
     const outstanding = inv.total - inv.amountPaid
     if (amount > outstanding) return fail(409, 'OVERPAYMENT', 'Amount exceeds outstanding balance', { amount: `Only ${(outstanding / 100).toFixed(2)} is outstanding` })
     const payment = applyPayment(inv, { method, amount, date, reference: reference || null, note: note || null })
+    audit(ctx, 'PAYMENT_CREATE', 'Invoice', inv.id, inv.number, { amountPaid: inv.amountPaid - amount }, { amount, method, amountPaid: inv.amountPaid, status: inv.status })
     return [201, { payment, invoice: invoiceView(inv) }]
   },
 
@@ -208,6 +213,7 @@ export const billingRoutes: MockRoutes = {
     if (!inv || !p) return fail(404, 'NOT_FOUND', 'Payment not found')
     if (p.voidedAt) return fail(409, 'INVALID_TRANSITION', 'Payment already voided')
     if (!String(ctx.body.reason ?? '').trim()) return fail(400, 'VALIDATION_ERROR', 'Reason required', { reason: 'Give a reason' })
+    audit(ctx, 'PAYMENT_VOID', 'Invoice', inv.id, inv.number, { amount: p.amount, status: inv.status }, { reason: ctx.body.reason.trim() })
     p.voidedAt = new Date().toISOString()
     p.voidReason = ctx.body.reason.trim()
     inv.amountPaid -= p.amount

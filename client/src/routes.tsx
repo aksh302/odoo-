@@ -3,7 +3,11 @@ import { Link, Navigate, Route, Routes } from 'react-router-dom'
 import { homeFor, useAuth } from './auth/AuthContext'
 import { ProtectedRoute, PublicOnlyRoute } from './auth/ProtectedRoute'
 import { AppLayout, PortalLayout } from './components/AppLayout'
-import { PlaceholderPage } from './components/PlaceholderPage'
+import AuditPage from './pages/admin/AuditPage'
+import DiscountsPage from './pages/admin/DiscountsPage'
+import StaffPage from './pages/admin/StaffPage'
+import TaxesPage from './pages/admin/TaxesPage'
+import CustomerDetailPage from './pages/CustomerDetailPage'
 import CustomersPage from './pages/CustomersPage'
 import DashboardPage from './pages/DashboardPage'
 import BillingPage from './pages/BillingPage'
@@ -23,9 +27,7 @@ import LoginPage from './pages/auth/LoginPage'
 import ResetPage from './pages/auth/ResetPage'
 import SignupPage from './pages/auth/SignupPage'
 
-const P = PlaceholderPage
-
-// Every route from SRS v1.1 section 9.7. Replace each <P /> with the real page as you build it.
+// Every route from SRS v1.1 section 9.7.
 export function AppRoutes() {
   return (
     <Routes>
@@ -44,7 +46,7 @@ export function AppRoutes() {
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/customers" element={<CustomersPage />} />
-          <Route path="/customers/:id" element={<P title="Customer" todo="profile form, the customer's subscriptions and invoices" />} />
+          <Route path="/customers/:id" element={<CustomerDetailPage />} />
           <Route path="/products" element={<ProductsPage />} />
           <Route path="/plans" element={<PlansPage />} />
           <Route path="/templates" element={<TemplatesPage />} />
@@ -56,13 +58,13 @@ export function AppRoutes() {
           <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/payments" element={<PaymentsPage />} />
-          <Route path="/audit" element={<P title="Audit Log" todo="audit table with entity filter" />} />
+          <Route path="/audit" element={<AuditPage />} />
 
           {/* Admin only */}
           <Route element={<ProtectedRoute roles={['ADMIN']} />}>
-            <Route path="/taxes" element={<P title="Taxes" todo="tax rule table and form" />} />
-            <Route path="/discounts" element={<P title="Discounts" todo="discount table; form switches fields by scope" />} />
-            <Route path="/staff" element={<P title="Staff" todo="staff table, add form, deactivate toggle" />} />
+            <Route path="/taxes" element={<TaxesPage />} />
+            <Route path="/discounts" element={<DiscountsPage />} />
+            <Route path="/staff" element={<StaffPage />} />
           </Route>
         </Route>
       </Route>

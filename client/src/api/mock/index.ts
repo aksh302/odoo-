@@ -6,6 +6,7 @@ import { subscriptionRoutes } from './subscriptions'
 import { billingRoutes } from './billing'
 import { portalRoutes } from './portal'
 import { reportRoutes } from './reports'
+import { adminRoutes } from './admin'
 import { fail } from './util'
 import type { MockResult, MockRoutes } from './util'
 
@@ -29,6 +30,7 @@ const ALL_ROUTES: MockRoutes = {
   ...billingRoutes,
   ...portalRoutes,
   ...reportRoutes,
+  ...adminRoutes,
 }
 
 // Pre-compile 'PUT /products/:id' -> regex once.
@@ -64,7 +66,9 @@ export const mockAdapter: AxiosAdapter = async (config) => {
         : fail(404, 'NOT_FOUND', `No mock for ${method} ${path}`)
   }
 
-  const [status, data] = result
+  // Copy the data like a real network would, so screens never share objects with the mock store.
+  const [status, raw] = result
+  const data = raw === undefined ? raw : JSON.parse(JSON.stringify(raw))
   const response: AxiosResponse = { data, status, statusText: String(status), headers: new AxiosHeaders(), config }
   if (status >= 400) throw new AxiosError(`Mock ${status}`, String(status), config, undefined, response)
   return response

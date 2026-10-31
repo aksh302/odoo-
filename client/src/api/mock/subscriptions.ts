@@ -13,7 +13,7 @@ import type {
 import { customers, users } from './auth'
 import { getVariants, plans, products, taxes } from './catalog'
 import { applyPayment, buildInvoice, invoices, isOverdue, renumberSeeded } from './ledger'
-import { contains, fail, nextId, paginate, requireRole, todayISO } from './util'
+import { audit, contains, fail, nextId, paginate, requireRole, todayISO } from './util'
 import type { MockCtx, MockResult, MockRoutes } from './util'
 
 // Rules follow SRS 9.5 (state machine guards) and 9.4 (line snapshots).
@@ -260,6 +260,7 @@ export function transition(s: SubRecord, body: any, ctx: MockCtx): MockResult {
     const term = plan.billingPeriod === 'YEARLY' ? 1 : 12 // one plan term: a year of periods
     const newExpiry = plan.billingPeriod === 'YEARLY' ? addPeriods(s.expiryDate, 'YEARLY', term) : iso(dayjs(s.expiryDate).add(1, 'year'))
     if (plan.autoClose && newExpiry > plan.endDate) return fail(409, 'PLAN_FLAG_DISABLED', 'Renewal would go past the plan end date')
+    audit(ctx, 'SUBSCRIPTION_RENEW', 'Subscription', s.id, s.number, { expiryDate: s.expiryDate }, { expiryDate: newExpiry })
     s.expiryDate = newExpiry
     return [200, { subscription: view(s) }]
   }
@@ -300,7 +301,7 @@ export function transition(s: SubRecord, body: any, ctx: MockCtx): MockResult {
     if (!plan.closable) return fail(409, 'PLAN_FLAG_DISABLED', 'Plan does not allow closing early')
     s.nextBillingDate = null
   }
-  void ctx
+  audit(ctx, 'SUBSCRIPTION_STATUS', 'Subscription', s.id, s.number, { status: s.status }, { status: to })
   s.status = to
   return [200, { subscription: view(s) }]
 }
@@ -384,6 +385,7 @@ export const subscriptionRoutes: MockRoutes = {
       lines: built.lines!,
     }
     subs.unshift(s)
+    audit(ctx, 'SUBSCRIPTION_CREATE', 'Subscription', s.id, s.number, null, { status: 'DRAFT', planId: s.planId })
     return [201, { subscription: view(s) }]
   },
 

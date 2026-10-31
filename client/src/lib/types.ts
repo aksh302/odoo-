@@ -215,6 +215,37 @@ export interface BillingRun {
   errorLog?: { subscriptionNumber: string; message: string }[] | null
 }
 
+// ---- Admin: discounts, audit ----
+
+export interface Discount {
+  id: number
+  name: string
+  type: 'FIXED' | 'PERCENT'
+  value: number // paise if FIXED, whole percent 0-100 if PERCENT
+  scope: 'PRODUCT' | 'SUBSCRIPTION'
+  productIds: number[]
+  minQty?: number | null
+  minPurchase?: number | null // paise
+  startDate: string
+  endDate: string
+  usageLimit?: number | null
+  usedCount: number // read only
+  isActive: boolean
+}
+
+export interface AuditEntry {
+  id: number
+  at: string
+  userId?: number | null
+  userName?: string | null
+  action: string // e.g. SUBSCRIPTION_STATUS, PAYMENT_CREATE
+  entity: string // e.g. Subscription, Invoice, Payment
+  entityId: number
+  entityLabel?: string | null // e.g. SUB-2026-000004
+  oldValue?: unknown
+  newValue?: unknown
+}
+
 /** Every list endpoint returns this. */
 export interface Paged<T> {
   data: T[]

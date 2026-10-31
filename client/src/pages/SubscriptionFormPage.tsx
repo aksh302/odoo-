@@ -4,6 +4,7 @@ import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { adminApi } from '../api/admin'
 import { api } from '../api/client'
 import { applyFieldErrors, parseError } from '../api/errors'
 import { subscriptionsApi } from '../api/subscriptions'
@@ -44,6 +45,7 @@ export default function SubscriptionFormPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [expiryTouched, setExpiryTouched] = useState(false)
+  const [preset, setPreset] = useState<{ id: number; name: string; company?: string | null } | undefined>()
 
   const planId = Form.useWatch('planId', form)
   const lines: LineValue[] = Form.useWatch('lines', form) ?? []
@@ -91,6 +93,17 @@ export default function SubscriptionFormPage() {
     } else {
       const start = dayjs().add(1, 'day')
       form.setFieldsValue({ startDate: start, expiryDate: start.add(1, 'year'), paymentTerms: 15, lines: [] })
+      // ?customer=ID from a customer's page
+      const cid = Number(params.get('customer'))
+      if (cid) {
+        adminApi
+          .getCustomer(cid)
+          .then(({ customer: c }) => {
+            setPreset({ id: c.id, name: c.name, company: c.profile?.company })
+            form.setFieldValue('customerId', c.id)
+          })
+          .catch(() => undefined)
+      }
     }
   }, [editingId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -178,7 +191,7 @@ export default function SubscriptionFormPage() {
                   <Col xs={24} md={12}>
                     <Form.Item name="customerId" label="Customer" rules={[{ required: true, message: 'Choose a customer' }]}>
                       <CustomerSelect
-                        initial={existing?.customer ? { id: existing.customer.id, name: existing.customer.name, company: existing.customer.company } : undefined}
+                        initial={existing?.customer ? { id: existing.customer.id, name: existing.customer.name, company: existing.customer.company } : preset}
                       />
                     </Form.Item>
                   </Col>
