@@ -4,7 +4,15 @@ import { requireAuth } from '../../middleware/auth';
 import { requireRole } from '../../middleware/rbac';
 import { validate } from '../../middleware/validate';
 import { Role } from '@prisma/client';
-import { RunBillingSchema, BulkConfirmInvoiceSchema, CancelInvoiceSchema } from './schemas';
+import { getPagination } from '../../lib/pagination';
+import {
+  RunBillingSchema,
+  BulkConfirmInvoiceSchema,
+  CancelInvoiceSchema,
+  ListInvoicesQuerySchema,
+  ConfirmDraftsSchema,
+  RemindSchema,
+} from './schemas';
 
 const router = Router();
 
@@ -21,6 +29,99 @@ router.post(
         req.body.asOf,
       );
       res.json(summary);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Billing run history
+router.get('/runs', requireAuth, requireRole(Role.ADMIN, Role.STAFF), async (req, res, next) => {
+  try {
+    const result = await BillingService.listRuns(getPagination(req));
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// List invoices: ?status, customerId, subscriptionId, overdue=true, from, to (period start), q
+router.get(
+  '/invoices',
+  requireAuth,
+  requireRole(Role.ADMIN, Role.STAFF),
+  validate({ query: ListInvoicesQuerySchema }),
+  async (req, res, next) => {
+    try {
+      const q = req.query as any;
+      const result = await BillingService.listInvoices(getPagination(req), {
+        status: q.status,
+        customerId: q.customerId,
+        subscriptionId: q.subscriptionId,
+        overdue: q.overdue === 'true',
+        from: q.from ? new Date(q.from) : undefined,
+        to: q.to ? new Date(q.to) : undefined,
+        q: q.q,
+      });
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Confirm drafts: the given ids, or every draft when invoiceIds is left out
+router.post(
+  '/invoices/confirm-drafts',
+  requireAuth,
+  requireRole(Role.ADMIN, Role.STAFF),
+  validate({ body: ConfirmDraftsSchema }),
+  async (req, res, next) => {
+    try {
+      const result = req.body.invoiceIds?.length
+        ? await BillingService.bulkConfirm(req.user!.userId, req.body.invoiceIds)
+        : await BillingService.confirmAllDrafts(req.user!.userId);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Email a reminder for every overdue invoice (once per invoice per day)
+router.post('/invoices/remind-overdue', requireAuth, requireRole(Role.ADMIN, Role.STAFF), async (req, res, next) => {
+  try {
+    const result = await BillingService.remindOverdue(req.user!.userId);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// One invoice with lines and payments
+router.get('/invoices/:id', requireAuth, requireRole(Role.ADMIN, Role.STAFF), async (req, res, next) => {
+  try {
+    const result = await BillingService.getInvoice(parseInt(req.params.id as string, 10));
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Record a payment reminder ({ channel: 'EMAIL' | 'WHATSAPP' }); EMAIL is sent by the server
+router.post(
+  '/invoices/:id/remind',
+  requireAuth,
+  requireRole(Role.ADMIN, Role.STAFF),
+  validate({ body: RemindSchema }),
+  async (req, res, next) => {
+    try {
+      const invoice = await BillingService.remind(
+        req.user!.userId,
+        parseInt(req.params.id as string, 10),
+        req.body.channel,
+      );
+      res.json({ invoice });
     } catch (err) {
       next(err);
     }

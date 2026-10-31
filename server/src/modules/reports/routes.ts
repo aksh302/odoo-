@@ -8,9 +8,17 @@ import { Role } from '@prisma/client';
 const router = Router();
 
 // Staff & Admin: Dashboard KPIs
-router.get('/summary', requireAuth, requireRole(Role.ADMIN, Role.STAFF), async (_req, res, next) => {
+// Optional filters: ?customerId, planId, from, to (payment dates for revenue)
+router.get('/summary', requireAuth, requireRole(Role.ADMIN, Role.STAFF), async (req, res, next) => {
   try {
-    const kpis = await ReportsService.getSummaryKpis();
+    const num = (v: unknown) => (v ? parseInt(v as string, 10) : undefined);
+    const day = (v: unknown) => (v ? new Date(v as string) : undefined);
+    const kpis = await ReportsService.getSummaryKpis({
+      customerId: num(req.query.customerId),
+      planId: num(req.query.planId),
+      from: day(req.query.from),
+      to: day(req.query.to),
+    });
     res.json(kpis);
   } catch (err) {
     next(err);

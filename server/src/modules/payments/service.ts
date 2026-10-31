@@ -2,27 +2,68 @@ import prisma from '../../lib/prisma';
 import { Errors } from '../../lib/errors';
 import { audit } from '../../lib/audit';
 import { todayIST } from '../../lib/dates';
-import { InvoiceStatus, PaymentMethod } from '@prisma/client';
+import { InvoiceStatus, PaymentMethod, Prisma } from '@prisma/client';
 import { PaginationParams, paginate } from '../../lib/pagination';
 
 export class PaymentService {
-  static async listPayments(pagination: PaginationParams, invoiceId?: number) {
-    const where: any = { isSynthetic: false };
-    if (invoiceId) where.invoiceId = invoiceId;
+  /**
+   * Paged payments, newest first, each with invoiceNumber and customerName.
+   * Filters: invoiceId, customerId, from/to (payment date), q (invoice no., customer, reference),
+   * includeVoided (default true; the portal passes false).
+   */
+  static async listPayments(
+    pagination: PaginationParams,
+    filters: {
+      invoiceId?: number;
+      customerId?: number;
+      from?: Date;
+      to?: Date;
+      q?: string;
+      includeVoided?: boolean;
+    } = {},
+  ) {
+    const where: Prisma.PaymentWhereInput = { isSynthetic: false };
+    if (filters.invoiceId) where.invoiceId = filters.invoiceId;
+    if (filters.customerId) where.invoice = { customerId: filters.customerId };
+    if (filters.from || filters.to) where.date = { gte: filters.from, lte: filters.to };
+    if (filters.includeVoided === false) where.voidedAt = null;
+    if (filters.q) {
+      const q = filters.q.trim();
+      where.OR = [
+        { reference: { contains: q, mode: 'insensitive' } },
+        { invoice: { number: { contains: q, mode: 'insensitive' } } },
+        { invoice: { customer: { name: { contains: q, mode: 'insensitive' } } } },
+        { invoice: { customer: { profile: { company: { contains: q, mode: 'insensitive' } } } } },
+      ];
+    }
 
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       prisma.payment.findMany({
         where,
         include: {
-          invoice: { select: { id: true, number: true, customerId: true, total: true } },
+          invoice: {
+            select: {
+              id: true,
+              number: true,
+              customerId: true,
+              total: true,
+              customer: { select: { name: true, profile: { select: { company: true } } } },
+            },
+          },
         },
         skip: pagination.skip,
         take: pagination.limit,
-        orderBy: { id: 'desc' },
+        orderBy: [{ date: 'desc' }, { id: 'desc' }],
       }),
       prisma.payment.count({ where }),
     ]);
 
+    const data = rows.map(({ invoice, ...p }) => ({
+      ...p,
+      invoiceNumber: invoice.number,
+      customerId: invoice.customerId,
+      customerName: invoice.customer.profile?.company || invoice.customer.name,
+    }));
     return paginate(data, total, pagination);
   }
 

@@ -64,6 +64,54 @@ export class PricingService {
     return discount;
   }
 
+  /**
+   * Edit a discount. usedCount is never changed here.
+   * When `productIds` is given it replaces the product list.
+   */
+  static async updateDiscount(actorId: number, discountId: number, data: any) {
+    const existing = await prisma.discount.findUnique({
+      where: { id: discountId },
+      include: { products: true },
+    });
+    if (!existing) throw Errors.notFound('Discount', discountId);
+
+    const { productIds, ...rest } = data;
+    const merged = { ...existing, ...rest };
+    if (merged.type === DiscountType.PERCENT && (merged.value < 0 || merged.value > 100)) {
+      throw Errors.validationError({ value: 'Percentage discount must be between 0 and 100' });
+    }
+    if (merged.endDate < merged.startDate) {
+      throw Errors.validationError({ endDate: 'endDate must be on or after startDate' });
+    }
+
+    const discount = await prisma.$transaction(async (tx) => {
+      if (productIds) {
+        await tx.discountProduct.deleteMany({ where: { discountId } });
+      }
+      return tx.discount.update({
+        where: { id: discountId },
+        data: {
+          ...rest,
+          products: productIds
+            ? { create: productIds.map((pid: number) => ({ productId: pid })) }
+            : undefined,
+        },
+        include: { products: true },
+      });
+    });
+
+    await audit({
+      userId: actorId,
+      action: rest.isActive === false ? 'DISCOUNT_DEACTIVATE' : 'DISCOUNT_UPDATE',
+      entity: 'Discount',
+      entityId: discountId,
+      oldValue: existing,
+      newValue: data,
+    });
+
+    return discount;
+  }
+
   static async computePricing(
     plan: { id: number; name: string; price: number },
     lines: Array<{
@@ -121,7 +169,7 @@ export class PricingService {
       // Candidate discounts matching this line
       const candidates = discounts.filter((d) => {
         if (d.scope === DiscountScope.PRODUCT) {
-          const linksToProduct = d.products.some((p) => p.productId === line.productId);
+          const linksToProduct = d.products.some((p: { productId: number }) => p.productId === line.productId);
           if (!linksToProduct) return false;
         }
         // PRODUCT scope applies minQty to the line quantity; SUBSCRIPTION scope checks total subscription quantity

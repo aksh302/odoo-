@@ -25,3 +25,17 @@ export const CreateDiscountSchema = z.object({
   path: ['endDate'],
 });
 
+
+export const UpdateDiscountSchema = z.object({
+  name: z.string().min(1).optional(),
+  type: z.nativeEnum(DiscountType).optional(),
+  value: z.number().int().nonnegative().optional(),
+  minPurchase: z.number().int().nonnegative().nullable().optional(),
+  minQty: z.number().int().positive().nullable().optional(),
+  startDate: z.string().transform((str) => new Date(str)).optional(),
+  endDate: z.string().transform((str) => new Date(str)).optional(),
+  usageLimit: z.number().int().positive().nullable().optional(),
+  scope: z.nativeEnum(DiscountScope).optional(),
+  productIds: z.array(z.number().int()).optional(),
+  isActive: z.boolean().optional(),
+});

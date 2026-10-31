@@ -76,6 +76,46 @@ export class SubscriptionService {
     return sub;
   }
 
+  /**
+   * Turn {productId, variantId, quantity} inputs into subscription lines,
+   * snapshotting the price (salesPrice + variant extraPrice) and tax at this moment.
+   */
+  static async snapshotLines(items: Array<{ productId: number; variantId?: number; quantity: number }>) {
+    const lineCreations = [];
+    for (const item of items) {
+      const product = await prisma.product.findUnique({
+        where: { id: item.productId },
+        include: { tax: true },
+      });
+      if (!product || product.isArchived) throw Errors.productArchived();
+
+      let extraPrice = 0;
+      let description = product.name;
+
+      if (item.variantId) {
+        const variant = await prisma.variant.findUnique({ where: { id: item.variantId } });
+        if (variant && !variant.isArchived) {
+          extraPrice = variant.extraPrice;
+          description = `${product.name} - ${variant.value}`;
+        }
+      }
+
+      const unitPrice = product.salesPrice + extraPrice;
+      const amount = unitPrice * item.quantity;
+
+      lineCreations.push({
+        productId: product.id,
+        variantId: item.variantId,
+        description,
+        quantity: item.quantity,
+        unitPrice,
+        taxId: product.taxId,
+        amount,
+      });
+    }
+    return lineCreations;
+  }
+
   static async createSubscription(
     actorId: number,
     data: {
@@ -121,39 +161,7 @@ export class SubscriptionService {
     const customer = await prisma.user.findUnique({ where: { id: data.customerId } });
     if (!customer || !customer.isActive) throw Errors.notFound('Customer', data.customerId);
 
-    // Snapshot lines
-    const lineCreations = [];
-    for (const item of finalLines) {
-      const product = await prisma.product.findUnique({
-        where: { id: item.productId },
-        include: { tax: true },
-      });
-      if (!product || product.isArchived) throw Errors.productArchived();
-
-      let extraPrice = 0;
-      let description = product.name;
-
-      if (item.variantId) {
-        const variant = await prisma.variant.findUnique({ where: { id: item.variantId } });
-        if (variant && !variant.isArchived) {
-          extraPrice = variant.extraPrice;
-          description = `${product.name} - ${variant.value}`;
-        }
-      }
-
-      const unitPrice = product.salesPrice + extraPrice;
-      const amount = unitPrice * item.quantity;
-
-      lineCreations.push({
-        productId: product.id,
-        variantId: item.variantId,
-        description,
-        quantity: item.quantity,
-        unitPrice,
-        taxId: product.taxId,
-        amount,
-      });
-    }
+    const lineCreations = await this.snapshotLines(finalLines);
 
     const number = await this.generateNumber();
     const anchorDay = data.startDate.getUTCDate();
@@ -188,6 +196,76 @@ export class SubscriptionService {
     });
 
     return subscription;
+  }
+
+  /**
+   * Edit a subscription while it is still a Draft or Quotation.
+   * When `lines` is given it replaces all lines (prices re-snapshotted).
+   */
+  static async updateSubscription(
+    actorId: number,
+    subscriptionId: number,
+    data: {
+      customerId?: number;
+      planId?: number;
+      startDate?: Date;
+      expiryDate?: Date;
+      paymentTerms?: number;
+      lines?: Array<{ productId: number; variantId?: number; quantity: number }>;
+    },
+  ) {
+    const sub = await prisma.subscription.findUnique({ where: { id: subscriptionId } });
+    if (!sub) throw Errors.notFound('Subscription', subscriptionId);
+    if (sub.status !== SubscriptionStatus.DRAFT && sub.status !== SubscriptionStatus.QUOTATION) {
+      throw Errors.conflict('Only Draft and Quotation subscriptions can be edited');
+    }
+
+    if (data.planId && data.planId !== sub.planId) {
+      const plan = await prisma.plan.findUnique({ where: { id: data.planId } });
+      if (!plan || plan.isArchived) throw Errors.planArchived();
+    }
+    if (data.customerId && data.customerId !== sub.customerId) {
+      const customer = await prisma.user.findUnique({ where: { id: data.customerId } });
+      if (!customer || !customer.isActive) throw Errors.notFound('Customer', data.customerId);
+    }
+
+    const startDate = data.startDate ?? sub.startDate;
+    const expiryDate = data.expiryDate ?? sub.expiryDate;
+    if (expiryDate <= startDate) {
+      throw Errors.validationError({ expiryDate: 'expiryDate must be after startDate' });
+    }
+
+    const lineCreations = data.lines ? await this.snapshotLines(data.lines) : null;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      if (lineCreations) {
+        await tx.subscriptionLine.deleteMany({ where: { subscriptionId } });
+      }
+      return tx.subscription.update({
+        where: { id: subscriptionId },
+        data: {
+          customerId: data.customerId,
+          planId: data.planId,
+          startDate: data.startDate,
+          anchorDay: data.startDate ? data.startDate.getUTCDate() : undefined,
+          expiryDate: data.expiryDate,
+          paymentTerms: data.paymentTerms,
+          lines: lineCreations ? { create: lineCreations } : undefined,
+        },
+        include: { lines: true, plan: true },
+      });
+    });
+
+    await audit({
+      userId: actorId,
+      action: 'SUBSCRIPTION_UPDATE',
+      entity: 'Subscription',
+      entityId: subscriptionId,
+      oldValue: { planId: sub.planId, startDate: sub.startDate, expiryDate: sub.expiryDate, paymentTerms: sub.paymentTerms },
+      newValue: data,
+    });
+
+    return updated;
   }
 
   static async transitionStatus(

@@ -6,6 +6,7 @@ import { validate } from '../../middleware/validate';
 import { getPagination } from '../../lib/pagination';
 import { Role } from '@prisma/client';
 import { RecordPaymentSchema, VoidPaymentSchema } from './schemas';
+import { BillingService } from '../billing/service';
 
 const router = Router();
 
@@ -13,8 +14,15 @@ const router = Router();
 router.get('/', requireAuth, requireRole(Role.ADMIN, Role.STAFF), async (req, res, next) => {
   try {
     const pagination = getPagination(req);
-    const invoiceId = req.query.invoiceId ? parseInt(req.query.invoiceId as string, 10) : undefined;
-    const result = await PaymentService.listPayments(pagination, invoiceId);
+    const num = (v: unknown) => (v ? parseInt(v as string, 10) : undefined);
+    const day = (v: unknown) => (v ? new Date(v as string) : undefined);
+    const result = await PaymentService.listPayments(pagination, {
+      invoiceId: num(req.query.invoiceId),
+      customerId: num(req.query.customerId),
+      from: day(req.query.from),
+      to: day(req.query.to),
+      q: req.query.q as string | undefined,
+    });
     res.json(result);
   } catch (err) {
     next(err);
@@ -30,7 +38,9 @@ router.post(
   async (req, res, next) => {
     try {
       const payment = await PaymentService.recordPayment(req.user!.userId, req.body);
-      res.status(201).json({ payment });
+      // Also return the updated invoice (amountPaid, status) so the screen can refresh in one go
+      const { invoice } = await BillingService.getInvoice(payment.invoiceId);
+      res.status(201).json({ payment, invoice });
     } catch (err) {
       next(err);
     }
@@ -50,7 +60,8 @@ router.post(
         parseInt(req.params.id as string, 10),
         req.body.reason,
       );
-      res.json({ success: true, payment });
+      const { invoice } = await BillingService.getInvoice(payment.invoiceId);
+      res.json({ success: true, payment, invoice });
     } catch (err) {
       next(err);
     }

@@ -5,7 +5,7 @@ import { requireRole } from '../../middleware/rbac';
 import { validate } from '../../middleware/validate';
 import { getPagination } from '../../lib/pagination';
 import { Role, SubscriptionStatus } from '@prisma/client';
-import { CreateSubscriptionSchema, TransitionSubscriptionSchema } from './schemas';
+import { CreateSubscriptionSchema, UpdateSubscriptionSchema, TransitionSubscriptionSchema } from './schemas';
 
 const router = Router();
 
@@ -40,6 +40,25 @@ router.post(
     try {
       const sub = await SubscriptionService.createSubscription(req.user!.userId, req.body);
       res.status(201).json({ subscription: sub });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.put(
+  '/:id',
+  requireAuth,
+  requireRole(Role.ADMIN, Role.STAFF),
+  validate({ body: UpdateSubscriptionSchema }),
+  async (req, res, next) => {
+    try {
+      const sub = await SubscriptionService.updateSubscription(
+        req.user!.userId,
+        parseInt(req.params.id as string, 10),
+        req.body,
+      );
+      res.json({ subscription: sub });
     } catch (err) {
       next(err);
     }

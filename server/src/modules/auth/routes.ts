@@ -102,6 +102,32 @@ router.post(
   },
 );
 
+// Admin-only: Reactivate a user
+router.post(
+  '/users/:id/reactivate',
+  requireAuth,
+  requireRole(Role.ADMIN),
+  async (req, res, next) => {
+    try {
+      const targetId = parseInt(req.params.id as string, 10);
+      const user = await AuthService.reactivateUser(req.user!.userId, targetId);
+      res.json({ success: true, user });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Admin-only: List staff and admins
+router.get('/users', requireAuth, requireRole(Role.ADMIN), async (req, res, next) => {
+  try {
+    const result = await AuthService.listStaff(getPagination(req), req.query.q as string | undefined);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Customers CRUD (Admin + Staff)
 router.get('/customers', requireAuth, requireRole(Role.ADMIN, Role.STAFF), async (req, res, next) => {
   try {

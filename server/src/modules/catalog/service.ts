@@ -26,6 +26,22 @@ export class CatalogService {
     return tax;
   }
 
+  static async updateTax(actorId: number, taxId: number, data: { name?: string; percent?: number }) {
+    const existing = await prisma.tax.findUnique({ where: { id: taxId } });
+    if (!existing) throw Errors.notFound('Tax', taxId);
+
+    const updated = await prisma.tax.update({ where: { id: taxId }, data });
+    await audit({
+      userId: actorId,
+      action: 'TAX_UPDATE',
+      entity: 'Tax',
+      entityId: taxId,
+      oldValue: existing,
+      newValue: updated,
+    });
+    return updated;
+  }
+
   // Products
   static async listProducts(
     pagination: PaginationParams,
@@ -144,6 +160,27 @@ export class CatalogService {
     return updated;
   }
 
+  static async restoreProduct(actorId: number, productId: number) {
+    const existing = await prisma.product.findUnique({ where: { id: productId } });
+    if (!existing) throw Errors.notFound('Product', productId);
+
+    const updated = await prisma.product.update({
+      where: { id: productId },
+      data: { isArchived: false },
+      include: { tax: true, variants: true },
+    });
+
+    await audit({
+      userId: actorId,
+      action: 'PRODUCT_RESTORE',
+      entity: 'Product',
+      entityId: productId,
+      newValue: { isArchived: false },
+    });
+
+    return updated;
+  }
+
   // Variants
   static async createVariant(
     actorId: number,
@@ -194,6 +231,26 @@ export class CatalogService {
       newValue: { isArchived: true },
     });
 
+    return updated;
+  }
+
+  static async updateVariant(
+    actorId: number,
+    variantId: number,
+    data: { attribute?: string; value?: string; extraPrice?: number },
+  ) {
+    const existing = await prisma.variant.findUnique({ where: { id: variantId } });
+    if (!existing) throw Errors.notFound('Variant', variantId);
+
+    const updated = await prisma.variant.update({ where: { id: variantId }, data });
+    await audit({
+      userId: actorId,
+      action: 'VARIANT_UPDATE',
+      entity: 'Variant',
+      entityId: variantId,
+      oldValue: existing,
+      newValue: updated,
+    });
     return updated;
   }
 
@@ -249,5 +306,46 @@ export class CatalogService {
 
     return updated;
   }
-}
 
+  static async updatePlan(actorId: number, planId: number, data: any) {
+    const existing = await prisma.plan.findUnique({ where: { id: planId } });
+    if (!existing) throw Errors.notFound('Plan', planId);
+
+    const startDate = data.startDate ?? existing.startDate;
+    const endDate = data.endDate ?? existing.endDate;
+    if (endDate <= startDate) {
+      throw Errors.validationError({ endDate: 'endDate must be after startDate' });
+    }
+
+    const updated = await prisma.plan.update({ where: { id: planId }, data });
+    await audit({
+      userId: actorId,
+      action: 'PLAN_UPDATE',
+      entity: 'Plan',
+      entityId: planId,
+      oldValue: existing,
+      newValue: updated,
+    });
+    return updated;
+  }
+
+  static async restorePlan(actorId: number, planId: number) {
+    const existing = await prisma.plan.findUnique({ where: { id: planId } });
+    if (!existing) throw Errors.notFound('Plan', planId);
+
+    const updated = await prisma.plan.update({
+      where: { id: planId },
+      data: { isArchived: false },
+    });
+
+    await audit({
+      userId: actorId,
+      action: 'PLAN_RESTORE',
+      entity: 'Plan',
+      entityId: planId,
+      newValue: { isArchived: false },
+    });
+
+    return updated;
+  }
+}

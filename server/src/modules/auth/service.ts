@@ -238,6 +238,11 @@ export class AuthService {
     const target = await prisma.user.findUnique({ where: { id: targetUserId } });
     if (!target) throw Errors.notFound('User', targetUserId);
 
+    if (target.role === Role.ADMIN && target.isActive) {
+      const activeAdmins = await prisma.user.count({ where: { role: Role.ADMIN, isActive: true } });
+      if (activeAdmins <= 1) throw Errors.conflict('The last active admin cannot be deactivated');
+    }
+
     const updated = await prisma.user.update({
       where: { id: targetUserId },
       data: { isActive: false },
@@ -253,6 +258,49 @@ export class AuthService {
     });
 
     return { id: updated.id, isActive: updated.isActive };
+  }
+
+  static async reactivateUser(actorId: number, targetUserId: number) {
+    const target = await prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!target) throw Errors.notFound('User', targetUserId);
+
+    const updated = await prisma.user.update({
+      where: { id: targetUserId },
+      data: { isActive: true },
+    });
+
+    await audit({
+      userId: actorId,
+      action: 'USER_REACTIVATE',
+      entity: 'User',
+      entityId: targetUserId,
+      oldValue: { isActive: target.isActive },
+      newValue: { isActive: true },
+    });
+
+    return { id: updated.id, name: updated.name, email: updated.email, role: updated.role, isActive: updated.isActive };
+  }
+
+  /** Staff and admins (for the Staff screen). ?q searches name and email. */
+  static async listStaff(pagination: PaginationParams, q?: string): Promise<PaginatedResponse<any>> {
+    const where: any = { role: { in: [Role.ADMIN, Role.STAFF] } };
+    if (q) {
+      where.OR = [
+        { name: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+    const [data, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
+        skip: pagination.skip,
+        take: pagination.limit,
+        orderBy: [{ role: 'asc' }, { id: 'asc' }],
+      }),
+      prisma.user.count({ where }),
+    ]);
+    return paginate(data, total, pagination);
   }
 
   static async listCustomers(pagination: PaginationParams): Promise<PaginatedResponse<any>> {

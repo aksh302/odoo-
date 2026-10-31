@@ -5,7 +5,7 @@ import { requireRole } from '../../middleware/rbac';
 import { validate } from '../../middleware/validate';
 import { getPagination } from '../../lib/pagination';
 import { Role } from '@prisma/client';
-import { CreateDiscountSchema } from './schemas';
+import { CreateDiscountSchema, UpdateDiscountSchema } from './schemas';
 
 const router = Router();
 
@@ -28,6 +28,25 @@ router.post(
     try {
       const discount = await PricingService.createDiscount(req.user!.userId, req.body);
       res.status(201).json({ discount });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.put(
+  '/discounts/:id',
+  requireAuth,
+  requireRole(Role.ADMIN),
+  validate({ body: UpdateDiscountSchema }),
+  async (req, res, next) => {
+    try {
+      const discount = await PricingService.updateDiscount(
+        req.user!.userId,
+        parseInt(req.params.id as string, 10),
+        req.body,
+      );
+      res.json({ discount });
     } catch (err) {
       next(err);
     }

@@ -8,6 +8,8 @@ import { Role, SubscriptionStatus } from '@prisma/client';
 import { SubscriptionService } from '../subscriptions/service';
 import { CreateSubscriptionSchema } from '../subscriptions/schemas';
 import { validate } from '../../middleware/validate';
+import { BillingService } from '../billing/service';
+import { PaymentService } from '../payments/service';
 
 const router = Router();
 
@@ -129,26 +131,13 @@ router.post('/subscriptions/:id/close', async (req, res, next) => {
   }
 });
 
-// Own Invoices
+// Own Invoices (same row shape as the staff list: subscriptionNumber, overdue flag)
 router.get('/invoices', async (req, res, next) => {
   try {
-    const pagination = getPagination(req);
-    const where = {
+    const result = await BillingService.listInvoices(getPagination(req), {
       customerId: req.user!.customerId,
-      isSynthetic: false,
-    };
-
-    const [data, total] = await Promise.all([
-      prisma.invoice.findMany({
-        where,
-        skip: pagination.skip,
-        take: pagination.limit,
-        orderBy: { id: 'desc' },
-      }),
-      prisma.invoice.count({ where }),
-    ]);
-
-    res.json({ data, page: pagination.page, limit: pagination.limit, total });
+    });
+    res.json(result);
   } catch (err) {
     next(err);
   }
@@ -157,17 +146,23 @@ router.get('/invoices', async (req, res, next) => {
 router.get('/invoices/:id', async (req, res, next) => {
   try {
     const id = parseInt(req.params.id as string, 10);
-    const inv = await prisma.invoice.findFirst({
-      where: {
-        id,
-        customerId: req.user!.customerId,
-        isSynthetic: false,
-      },
-      include: { lines: true, payments: true },
-    });
+    // Same shape as the staff view ({ invoice, lines, payments }), limited to this customer
+    // and without voided payments.
+    const result = await BillingService.getInvoice(id, req.user!.customerId);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
 
-    if (!inv) throw Errors.notFound('Invoice', id);
-    res.json({ invoice: inv });
+// Own payments (not voided), newest first
+router.get('/payments', async (req, res, next) => {
+  try {
+    const result = await PaymentService.listPayments(getPagination(req), {
+      customerId: req.user!.customerId,
+      includeVoided: false,
+    });
+    res.json(result);
   } catch (err) {
     next(err);
   }

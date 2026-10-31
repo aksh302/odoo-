@@ -4,7 +4,9 @@ import { audit } from '../../lib/audit';
 import { todayIST, periodEnd, dueDate, nextPeriodStart, isOnOrBefore } from '../../lib/dates';
 import { PricingService } from '../pricing/service';
 import { config } from '../../config';
-import { SubscriptionStatus, InvoiceStatus } from '@prisma/client';
+import { SubscriptionStatus, InvoiceStatus, Prisma } from '@prisma/client';
+import { sendEmail } from '../../lib/mailer';
+import { PaginationParams, paginate } from '../../lib/pagination';
 
 export interface BillingRunSummary {
   runId: number;
@@ -13,6 +15,23 @@ export interface BillingRunSummary {
   skipped: number;
   failed: number;
   errors: Array<{ subscriptionId: number; error: string }>;
+}
+
+export interface InvoiceFilters {
+  status?: InvoiceStatus;
+  customerId?: number;
+  subscriptionId?: number;
+  overdue?: boolean;
+  from?: Date;
+  to?: Date;
+  q?: string;
+}
+
+type ReminderChannel = 'EMAIL' | 'WHATSAPP';
+
+/** Unpaid, confirmed and past its due date. */
+function isOverdue(inv: { status: InvoiceStatus; dueDate: Date; total: number; amountPaid: number }, today = todayIST()) {
+  return inv.status === InvoiceStatus.CONFIRMED && inv.amountPaid < inv.total && inv.dueDate < today;
 }
 
 export class BillingService {
@@ -44,8 +63,6 @@ export class BillingService {
    * - BillingRun record
    */
   static async runBilling(triggeredBy: string, asOfParam?: Date): Promise<BillingRunSummary> {
-    const asOf = asOfParam || todayIST();
-
     // In non-demo mode, asOf cannot be overridden
     const effectiveAsOf = config.demoMode && asOfParam ? asOfParam : todayIST();
 
@@ -62,23 +79,40 @@ export class BillingService {
     (global as any).__billingRunActive = true;
     (global as any).__billingRunStartTime = Date.now();
 
-    // Acquire PostgreSQL Advisory Lock (lock id: 424242)
-    let lockAcquired = true;
+    // PostgreSQL advisory lock (id 424242), held for the whole run.
+    // A transaction-scoped lock (pg_try_advisory_xact_lock) lives on one connection and is
+    // released automatically when that transaction ends, even if the run crashes.
+    // (The old session lock + pg_advisory_unlock could run on two different pooled
+    // connections, so the unlock missed and later runs stayed BILLING_LOCKED.)
     try {
-      const lockRes = await prisma.$queryRaw<{ pg_try_advisory_lock: boolean }[]>`
-        SELECT pg_try_advisory_lock(424242) as pg_try_advisory_lock
-      `;
-      lockAcquired = lockRes[0]?.pg_try_advisory_lock ?? true;
-    } catch {
-      // In SQLite / mock fallback
-      lockAcquired = true;
-    }
+      return await prisma.$transaction(
+        async (lockTx) => {
+          let lockAcquired = true;
+          try {
+            const lockRes = await lockTx.$queryRaw<{ locked: boolean }[]>`
+              SELECT pg_try_advisory_xact_lock(424242) as locked
+            `;
+            lockAcquired = lockRes[0]?.locked ?? true;
+          } catch {
+            // Non-Postgres fallback
+            lockAcquired = true;
+          }
+          if (!lockAcquired) throw Errors.billingLocked();
 
-    if (!lockAcquired) {
+          return this.processDueSubscriptions(triggeredBy, effectiveAsOf);
+        },
+        { timeout: 10 * 60 * 1000, maxWait: 15000 },
+      );
+    } finally {
       (global as any).__billingRunActive = false;
-      throw Errors.billingLocked();
     }
+  }
 
+  /** The actual run; called by runBilling while it holds the advisory lock. */
+  private static async processDueSubscriptions(
+    triggeredBy: string,
+    effectiveAsOf: Date,
+  ): Promise<BillingRunSummary> {
     // Start BillingRun record
     const run = await prisma.billingRun.create({
       data: {
@@ -162,7 +196,7 @@ export class BillingService {
                   let curBillingDate = new Date(sub.nextBillingDate);
                   const anchorDay = sub.anchorDay || curBillingDate.getUTCDate();
 
-                while (isOnOrBefore(curBillingDate, effectiveAsOf) && isOnOrBefore(curBillingDate, currentSub.expiryDate)) {
+                while (isOnOrBefore(curBillingDate, effectiveAsOf) && isOnOrBefore(curBillingDate, sub.expiryDate)) {
                   const pStart = curBillingDate;
                   const pEnd = periodEnd(pStart, sub.plan.billingPeriod, anchorDay);
                   const pDue = dueDate(pStart, sub.paymentTerms);
@@ -293,14 +327,12 @@ export class BillingService {
         failed: failedCount,
         errors: errorDetails,
       };
-    } finally {
-      (global as any).__billingRunActive = false;
-      // Release advisory lock across all connections if acquired
-      try {
-        await prisma.$executeRawUnsafe(`SELECT pg_advisory_unlock(424242);`);
-      } catch {
-        // Ignored
-      }
+    } catch (err) {
+      await prisma.billingRun.update({
+        where: { id: run.id },
+        data: { finishedAt: new Date(), failed: failedCount, errorLog: [{ error: (err as Error).message }] as any },
+      });
+      throw err;
     }
   }
 
@@ -382,5 +414,230 @@ export class BillingService {
       return updated;
     });
   }
-}
 
+  // ---------------------------------------------------------------------------
+  // Invoice lists and detail (Staff, Admin)
+  // ---------------------------------------------------------------------------
+
+  /** Paged invoice list, newest period first. Each row gets subscriptionNumber and an overdue flag. */
+  static async listInvoices(pagination: PaginationParams, f: InvoiceFilters = {}) {
+    const today = todayIST();
+    const where: Prisma.InvoiceWhereInput = { isSynthetic: false };
+    if (f.status) where.status = f.status;
+    if (f.customerId) where.customerId = f.customerId;
+    if (f.subscriptionId) where.subscriptionId = f.subscriptionId;
+    if (f.from || f.to) where.periodStart = { gte: f.from, lte: f.to };
+    if (f.overdue) {
+      where.status = InvoiceStatus.CONFIRMED;
+      where.dueDate = { lt: today };
+    }
+    if (f.q) {
+      const q = f.q.trim();
+      where.OR = [
+        { number: { contains: q, mode: 'insensitive' } },
+        { subscription: { number: { contains: q, mode: 'insensitive' } } },
+        { customer: { name: { contains: q, mode: 'insensitive' } } },
+        { customer: { email: { contains: q, mode: 'insensitive' } } },
+        { customer: { profile: { company: { contains: q, mode: 'insensitive' } } } },
+      ];
+    }
+
+    // amountPaid < total can't be expressed in a Prisma where, so overdue is filtered after the query.
+    const query = {
+      where,
+      include: { subscription: { select: { number: true } } },
+      orderBy: [{ periodStart: 'desc' as const }, { id: 'desc' as const }],
+    };
+    let rows;
+    let total;
+    if (f.overdue) {
+      const all = (await prisma.invoice.findMany(query)).filter((i) => i.amountPaid < i.total);
+      total = all.length;
+      rows = all.slice(pagination.skip, pagination.skip + pagination.limit);
+    } else {
+      [rows, total] = await Promise.all([
+        prisma.invoice.findMany({ ...query, skip: pagination.skip, take: pagination.limit }),
+        prisma.invoice.count({ where }),
+      ]);
+    }
+
+    const reminders = await this.remindersFor(rows.map((r) => r.id));
+    const data = rows.map(({ subscription, ...inv }) => ({
+      ...inv,
+      subscriptionNumber: subscription.number,
+      overdue: isOverdue(inv, today),
+      reminders: reminders.get(inv.id) ?? [],
+    }));
+    return paginate(data, total, pagination);
+  }
+
+  /** One invoice with its lines and payments (voided payments included, for the history). */
+  static async getInvoice(invoiceId: number, customerIdFilter?: number) {
+    const inv = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        subscription: { select: { number: true } },
+        lines: { orderBy: { id: 'asc' } },
+        payments: { where: { isSynthetic: false }, orderBy: [{ date: 'desc' }, { id: 'desc' }] },
+      },
+    });
+    if (!inv || inv.isSynthetic || (customerIdFilter && inv.customerId !== customerIdFilter)) {
+      throw Errors.notFound('Invoice', invoiceId);
+    }
+
+    const discountIds = [...new Set(inv.lines.map((l) => l.discountId).filter((x): x is number => !!x))];
+    const discounts = discountIds.length
+      ? await prisma.discount.findMany({ where: { id: { in: discountIds } }, select: { id: true, name: true } })
+      : [];
+    const discountName = new Map(discounts.map((d) => [d.id, d.name]));
+
+    const { subscription, lines, payments, ...rest } = inv;
+    const reminders = await this.remindersFor([inv.id]);
+    return {
+      invoice: {
+        ...rest,
+        subscriptionNumber: subscription.number,
+        overdue: isOverdue(inv),
+        reminders: reminders.get(inv.id) ?? [],
+      },
+      lines: lines.map((l) => ({ ...l, discountName: l.discountId ? discountName.get(l.discountId) ?? null : null })),
+      payments: customerIdFilter ? payments.filter((p) => !p.voidedAt) : payments,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Billing run history
+  // ---------------------------------------------------------------------------
+
+  static async listRuns(pagination: PaginationParams) {
+    const [rows, total] = await Promise.all([
+      prisma.billingRun.findMany({
+        orderBy: { id: 'desc' },
+        skip: pagination.skip,
+        take: pagination.limit,
+      }),
+      prisma.billingRun.count(),
+    ]);
+
+    // errorLog is stored as [{ subscriptionId, error }]; show subscription numbers instead of ids.
+    const subIds = rows.flatMap((r) => ((r.errorLog as any[]) ?? []).map((e) => e.subscriptionId)).filter(Boolean);
+    const subs = subIds.length
+      ? await prisma.subscription.findMany({ where: { id: { in: subIds } }, select: { id: true, number: true } })
+      : [];
+    const numberOf = new Map(subs.map((x) => [x.id, x.number]));
+
+    const data = rows.map((r) => ({
+      ...r,
+      errorLog: Array.isArray(r.errorLog) && r.errorLog.length
+        ? (r.errorLog as any[]).map((e) => ({
+            subscriptionNumber: e.subscriptionId ? numberOf.get(e.subscriptionId) ?? `#${e.subscriptionId}` : '—',
+            message: e.error ?? e.message ?? 'Unknown error',
+          }))
+        : null,
+    }));
+    return paginate(data, total, pagination);
+  }
+
+  /** Confirm every draft invoice (the "Confirm all drafts" button). */
+  static async confirmAllDrafts(actorId: number) {
+    const drafts = await prisma.invoice.findMany({
+      where: { status: InvoiceStatus.DRAFT, isSynthetic: false },
+      select: { id: true },
+    });
+    return this.bulkConfirm(actorId, drafts.map((d) => d.id));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Payment reminders. Stored as INVOICE_REMIND audit entries, so no schema change is needed.
+  // ---------------------------------------------------------------------------
+
+  /** Reminders per invoice, newest first: { at, channel, by }. */
+  static async remindersFor(invoiceIds: number[]) {
+    const out = new Map<number, Array<{ at: Date; channel: ReminderChannel; by: string | null }>>();
+    if (!invoiceIds.length) return out;
+
+    const logs = await prisma.auditLog.findMany({
+      where: { action: 'INVOICE_REMIND', entity: 'Invoice', entityId: { in: invoiceIds } },
+      orderBy: { id: 'desc' },
+    });
+    const userIds = [...new Set(logs.map((l) => l.userId).filter((x): x is number => !!x))];
+    const users = userIds.length
+      ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
+      : [];
+    const nameOf = new Map(users.map((u) => [u.id, u.name]));
+
+    for (const l of logs) {
+      const list = out.get(l.entityId) ?? [];
+      list.push({
+        at: l.at,
+        channel: ((l.newValue as any)?.channel ?? 'EMAIL') as ReminderChannel,
+        by: l.userId ? nameOf.get(l.userId) ?? null : null,
+      });
+      out.set(l.entityId, list);
+    }
+    return out;
+  }
+
+  /**
+   * Record a payment reminder. For EMAIL the server sends the email (if SMTP is set up);
+   * for WHATSAPP the staff member sends it from their phone and this just records it.
+   */
+  static async remind(actorId: number | undefined, invoiceId: number, channel: ReminderChannel = 'EMAIL') {
+    const inv = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: { customer: true },
+    });
+    if (!inv || inv.isSynthetic) throw Errors.notFound('Invoice', invoiceId);
+    if (inv.status !== InvoiceStatus.CONFIRMED || inv.amountPaid >= inv.total) {
+      throw Errors.conflict('Only unpaid confirmed invoices can be chased');
+    }
+
+    let delivered = false;
+    if (channel === 'EMAIL') {
+      const due = ((inv.total - inv.amountPaid) / 100).toFixed(2);
+      delivered = await sendEmail({
+        to: inv.customer.email,
+        subject: `Payment reminder: invoice ${inv.number}`,
+        html:
+          `<p>Dear ${inv.customer.name},</p>` +
+          `<p>This is a reminder that ₹${due} is outstanding on invoice <b>${inv.number}</b>, ` +
+          `due on ${inv.dueDate.toISOString().slice(0, 10)}.</p>` +
+          `<p>Please quote the invoice number with your payment. Thank you.</p>`,
+      });
+    }
+
+    await audit({
+      userId: actorId,
+      action: 'INVOICE_REMIND',
+      entity: 'Invoice',
+      entityId: invoiceId,
+      newValue: { channel, delivered },
+    });
+
+    return (await this.getInvoice(invoiceId)).invoice;
+  }
+
+  /** Email every overdue invoice, at most once per invoice per day ("Remind all overdue" button). */
+  static async remindOverdue(actorId?: number) {
+    const today = todayIST();
+    const overdue = (
+      await prisma.invoice.findMany({
+        where: { status: InvoiceStatus.CONFIRMED, isSynthetic: false, dueDate: { lt: today } },
+        select: { id: true, total: true, amountPaid: true },
+      })
+    ).filter((i) => i.amountPaid < i.total);
+
+    const reminders = await this.remindersFor(overdue.map((i) => i.id));
+    const todayStr = new Date().toISOString().slice(0, 10);
+    let sent = 0;
+    for (const inv of overdue) {
+      const already = (reminders.get(inv.id) ?? []).some(
+        (r) => r.channel === 'EMAIL' && new Date(r.at).toISOString().slice(0, 10) === todayStr,
+      );
+      if (already) continue;
+      await this.remind(actorId, inv.id, 'EMAIL');
+      sent++;
+    }
+    return { sent };
+  }
+}

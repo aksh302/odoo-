@@ -5,7 +5,7 @@ import { requireRole } from '../../middleware/rbac';
 import { validate } from '../../middleware/validate';
 import { getPagination } from '../../lib/pagination';
 import { Role } from '@prisma/client';
-import { CreateTemplateSchema } from './schemas';
+import { CreateTemplateSchema, UpdateTemplateSchema } from './schemas';
 
 const router = Router();
 
@@ -38,6 +38,25 @@ router.post(
     try {
       const template = await QuotationService.createTemplate(req.user!.userId, req.body);
       res.status(201).json({ template });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.put(
+  '/:id',
+  requireAuth,
+  requireRole(Role.ADMIN, Role.STAFF),
+  validate({ body: UpdateTemplateSchema }),
+  async (req, res, next) => {
+    try {
+      const template = await QuotationService.updateTemplate(
+        req.user!.userId,
+        parseInt(req.params.id as string, 10),
+        req.body,
+      );
+      res.json({ template });
     } catch (err) {
       next(err);
     }

@@ -22,3 +22,12 @@ export const TransitionSubscriptionSchema = z.object({
   reason: z.string().optional(),
 });
 
+
+export const UpdateSubscriptionSchema = z.object({
+  customerId: z.number().int().optional(),
+  planId: z.number().int().optional(),
+  startDate: z.string().transform((str) => new Date(str)).optional(),
+  expiryDate: z.string().transform((str) => new Date(str)).optional(),
+  paymentTerms: z.number().int().positive().optional(),
+  lines: z.array(SubscriptionLineInputSchema).optional(),
+});

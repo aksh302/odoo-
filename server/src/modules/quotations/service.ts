@@ -70,5 +70,62 @@ export class QuotationService {
 
     return template;
   }
-}
 
+  /** Edit a template. When `lines` is given it replaces all existing lines. */
+  static async updateTemplate(
+    actorId: number,
+    templateId: number,
+    data: {
+      name?: string;
+      planId?: number;
+      validityDays?: number;
+      lines?: Array<{ productId: number; variantId?: number; quantity: number }>;
+    },
+  ) {
+    const existing = await prisma.quotationTemplate.findUnique({
+      where: { id: templateId },
+      include: { lines: true },
+    });
+    if (!existing) throw Errors.notFound('QuotationTemplate', templateId);
+
+    if (data.planId && data.planId !== existing.planId) {
+      const plan = await prisma.plan.findUnique({ where: { id: data.planId } });
+      if (!plan || plan.isArchived) throw Errors.planArchived();
+    }
+
+    const template = await prisma.$transaction(async (tx) => {
+      if (data.lines) {
+        await tx.templateLine.deleteMany({ where: { templateId } });
+      }
+      return tx.quotationTemplate.update({
+        where: { id: templateId },
+        data: {
+          name: data.name,
+          planId: data.planId,
+          validityDays: data.validityDays,
+          lines: data.lines
+            ? {
+                create: data.lines.map((l) => ({
+                  productId: l.productId,
+                  variantId: l.variantId,
+                  quantity: l.quantity,
+                })),
+              }
+            : undefined,
+        },
+        include: { lines: true, plan: true },
+      });
+    });
+
+    await audit({
+      userId: actorId,
+      action: 'TEMPLATE_UPDATE',
+      entity: 'QuotationTemplate',
+      entityId: templateId,
+      oldValue: existing,
+      newValue: data,
+    });
+
+    return template;
+  }
+}

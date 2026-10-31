@@ -6,6 +6,11 @@ export const CreateTaxSchema = z.object({
   percent: z.number().min(0).max(100, 'Tax percentage must be between 0 and 100'),
 });
 
+export const UpdateTaxSchema = z.object({
+  name: z.string().min(1).optional(),
+  percent: z.number().min(0).max(100, 'Tax percentage must be between 0 and 100').optional(),
+});
+
 export const CreateProductSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   type: z.string().min(1, 'Type is required'),

@@ -7,9 +7,11 @@ import { getPagination } from '../../lib/pagination';
 import { Role } from '@prisma/client';
 import {
   CreateTaxSchema,
+  UpdateTaxSchema,
   CreateProductSchema,
   UpdateProductSchema,
   CreateVariantSchema,
+  UpdateVariantSchema,
   CreatePlanSchema,
   UpdatePlanSchema,
 } from './schemas';
@@ -35,6 +37,25 @@ router.post(
     try {
       const tax = await CatalogService.createTax(req.user!.userId, req.body);
       res.status(201).json({ tax });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.put(
+  '/taxes/:id',
+  requireAuth,
+  requireRole(Role.ADMIN),
+  validate({ body: UpdateTaxSchema }),
+  async (req, res, next) => {
+    try {
+      const tax = await CatalogService.updateTax(
+        req.user!.userId,
+        parseInt(req.params.id as string, 10),
+        req.body,
+      );
+      res.json({ tax });
     } catch (err) {
       next(err);
     }
@@ -108,6 +129,18 @@ router.post('/products/:id/archive', requireAuth, requireRole(Role.ADMIN), async
   }
 });
 
+router.post('/products/:id/restore', requireAuth, requireRole(Role.ADMIN), async (req, res, next) => {
+  try {
+    const product = await CatalogService.restoreProduct(
+      req.user!.userId,
+      parseInt(req.params.id as string, 10),
+    );
+    res.json({ success: true, product });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // --- Variants ---
 router.post(
   '/variants',
@@ -135,6 +168,25 @@ router.post('/variants/:id/archive', requireAuth, requireRole(Role.ADMIN), async
     next(err);
   }
 });
+
+router.put(
+  '/variants/:id',
+  requireAuth,
+  requireRole(Role.ADMIN),
+  validate({ body: UpdateVariantSchema }),
+  async (req, res, next) => {
+    try {
+      const variant = await CatalogService.updateVariant(
+        req.user!.userId,
+        parseInt(req.params.id as string, 10),
+        req.body,
+      );
+      res.json({ variant });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // --- Plans ---
 // Customers can read active plans per SRS 2.1
@@ -176,6 +228,37 @@ router.post(
 router.post('/plans/:id/archive', requireAuth, requireRole(Role.ADMIN), async (req, res, next) => {
   try {
     const plan = await CatalogService.archivePlan(
+      req.user!.userId,
+      parseInt(req.params.id as string, 10),
+    );
+    res.json({ success: true, plan });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put(
+  '/plans/:id',
+  requireAuth,
+  requireRole(Role.ADMIN),
+  validate({ body: UpdatePlanSchema }),
+  async (req, res, next) => {
+    try {
+      const plan = await CatalogService.updatePlan(
+        req.user!.userId,
+        parseInt(req.params.id as string, 10),
+        req.body,
+      );
+      res.json({ plan });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.post('/plans/:id/restore', requireAuth, requireRole(Role.ADMIN), async (req, res, next) => {
+  try {
+    const plan = await CatalogService.restorePlan(
       req.user!.userId,
       parseInt(req.params.id as string, 10),
     );
