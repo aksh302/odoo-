@@ -61,6 +61,7 @@ npm run dev               # http://localhost:5173
 | `src/components/ReadPaymentDrawer.tsx` | **Read a payment** (Payments page): photo/screenshot of a receipt or a pasted UPI/bank SMS or note → reads amount, date, UTR, method, invoice number → matches the unpaid invoice → staff confirm and record |
 | `src/lib/paymentParser.ts` | Pulls payment details out of text and ranks matching invoices (invoice number, exact balance, customer name) |
 | `src/lib/ocr.ts` | In-browser OCR (Tesseract). Engine files are copied to `public/ocr` by `scripts/setup-ocr.mjs` on `npm install`, so it works offline |
+| `src/pages/HelpPage.tsx` | In-app rule book ("How to use" in the sidebar and portal header): steps and business rules for each job, filtered by role, searchable, with links to each screen |
 | `src/lib/cycle.ts` | Billing-period maths (anchor day), cycle progress, and the allowed status actions from SRS 9.5 |
 | `src/pages/PlansPage.tsx` | Plans table with availability status, filters, create/edit modal with period, dates and the four lifecycle switches |
 | `src/routes.tsx` | Every route from SRS 9.7. Not-yet-built pages show a placeholder listing what to build |

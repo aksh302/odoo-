@@ -7,6 +7,7 @@ import {
   FileTextOutlined,
   LogoutOutlined,
   PercentageOutlined,
+  QuestionCircleOutlined,
   ProfileOutlined,
   ScheduleOutlined,
   SyncOutlined,
@@ -30,7 +31,7 @@ interface NavItem {
   label: string
   icon: ReactNode
   roles: Role[]
-  group: 'Overview' | 'Sell' | 'Bill' | 'Catalog' | 'Admin'
+  group: 'Overview' | 'Sell' | 'Bill' | 'Catalog' | 'Admin' | 'Help'
 }
 
 // Back-office menu, filtered by role (SRS 2.1 permissions table).
@@ -48,8 +49,9 @@ const NAV: NavItem[] = [
   { group: 'Admin', path: '/discounts', label: 'Discounts', icon: <PercentageOutlined />, roles: ['ADMIN'] },
   { group: 'Admin', path: '/staff', label: 'Staff', icon: <UserOutlined />, roles: ['ADMIN'] },
   { group: 'Admin', path: '/audit', label: 'Audit log', icon: <AuditOutlined />, roles: ['ADMIN', 'STAFF'] },
+  { group: 'Help', path: '/help', label: 'How to use', icon: <QuestionCircleOutlined />, roles: ['ADMIN', 'STAFF'] },
 ]
-const GROUPS = ['Overview', 'Sell', 'Bill', 'Catalog', 'Admin'] as const
+const GROUPS = ['Overview', 'Sell', 'Bill', 'Catalog', 'Admin', 'Help'] as const
 
 /** Back-office shell (Admin and Staff): sidebar + header. */
 export function AppLayout() {
@@ -113,8 +115,17 @@ function TopBar({ brand }: { brand?: boolean }) {
     <Header
       style={{ padding: '0 24px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid #DCE4E0' }}
     >
-      {brand && <Logo />}
+      {brand && (
+        <Button type="text" className="px-0" onClick={() => navigate('/portal')} aria-label="Home">
+          <Logo />
+        </Button>
+      )}
       <div className="flex-1" />
+      {brand && (
+        <Button type="text" icon={<QuestionCircleOutlined />} onClick={() => navigate('/portal/help')}>
+          <span className="hidden sm:inline">How to use</span>
+        </Button>
+      )}
       {USE_MOCKS && (
         <Tag color="warning" className="hidden sm:inline-block">
           Mock data

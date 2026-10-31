@@ -13,6 +13,7 @@ import DashboardPage from './pages/DashboardPage'
 import BillingPage from './pages/BillingPage'
 import InvoiceDetailPage from './pages/InvoiceDetailPage'
 import InvoicePrintPage from './pages/InvoicePrintPage'
+import HelpPage from './pages/HelpPage'
 import InvoicesPage from './pages/InvoicesPage'
 import PaymentsPage from './pages/PaymentsPage'
 import PlansPage from './pages/PlansPage'
@@ -59,6 +60,7 @@ export function AppRoutes() {
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/audit" element={<AuditPage />} />
+          <Route path="/help" element={<HelpPage />} />
 
           {/* Admin only */}
           <Route element={<ProtectedRoute roles={['ADMIN']} />}>
@@ -74,6 +76,7 @@ export function AppRoutes() {
         <Route path="/portal/invoices/:id/print" element={<InvoicePrintPage source="portal" />} />
         <Route element={<PortalLayout />}>
           <Route path="/portal" element={<PortalPage />} />
+          <Route path="/portal/help" element={<HelpPage />} />
         </Route>
       </Route>
 
