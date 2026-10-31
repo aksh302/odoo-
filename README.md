@@ -1,162 +1,205 @@
-# Brightloop Subscription Management System
+# Brightloop — Subscription Management System
 
-One place to run a subscription business: products and plans → quotations → subscriptions →
-automatic monthly invoices with GST and discounts → payments → a finance dashboard, plus a
-self-service portal for customers.
+Brightloop runs a subscription business end to end: products and plans → quotations → subscriptions → automatic recurring invoices with GST and discounts → payments → a finance dashboard, plus a self-service portal for customers.
 
-| Folder | What | Stack |
-|---|---|---|
-| `client/` | Web app (back office + customer portal) | React 19, Vite, TypeScript, Ant Design, Tailwind |
-| `server/` | REST API, billing engine, jobs, PDF, email, AI | Node 20, Express, TypeScript, Prisma, PostgreSQL |
-| `ml/` | Late-payment risk model (training only) | Python, scikit-learn |
-| `docs/` | Backend SRS and design decisions | |
+![Dashboard](docs/screenshots/dashboard.jpg)
+
+| Customer invoice with UPI QR and GST | Payment read from a receipt photo |
+|---|---|
+| ![Invoice](docs/screenshots/invoice.jpg) | ![Read a payment](docs/screenshots/read-payment.jpg) |
+| **Bank statement matched to invoices** | **Customer portal** |
+| ![Statement import](docs/screenshots/statement.jpg) | ![Portal](docs/screenshots/portal.jpg) |
+
+---
+
+## Contents
+
+- [What it does](#what-it-does)
+- [Run it](#run-it)
+- [How it is built](#how-it-is-built)
+- [How billing stays correct](#how-billing-stays-correct)
+- [API](#api)
+- [Project structure](#project-structure)
+- [Tests](#tests)
+- [Late-payment risk model](#late-payment-risk-model)
+
+---
+
+## What it does
+
+| Area | Features |
+|---|---|
+| **Catalog** | Products with variants (extra price per variant), taxes (GST 5/12/18%), plans (daily, weekly, monthly, yearly) with rules: minimum quantity, pause, close early, renew, auto-close. Archive and restore. |
+| **Selling** | Customers with GSTIN and billing profile. Quotation templates. Subscriptions move Draft → Quotation → Confirmed → Active → Paused / Closed, with only valid transitions allowed. Live invoice estimate while editing. |
+| **Billing** | A daily billing run creates one invoice per due subscription, catches up missed periods, applies the best discount per line and GST (CGST + SGST inside the state, IGST across states). Draft or auto-confirmed invoices, consecutive invoice numbers. |
+| **Invoices** | Detail with lines, discount, tax, balance; UPI QR with the amount filled in; printable GST tax invoice and PDF; email and WhatsApp reminders with history; overdue tracking. |
+| **Payments** | Record full or part payments; admins can void with a reason. **Read a payment** from a receipt photo, UPI SMS or note (read in the browser). **Import a bank statement** and match every credit to its invoice. |
+| **Customer portal** | Customers see their balance and overdue invoices, pay by UPI, download PDFs, pause, resume, renew or close subscriptions, and request new plans (arrive as quotations). |
+| **Finance dashboard** | Active subscriptions, MRR and ARR, revenue collected by month, outstanding, overdue by age, how MRR moved this month (new / paused / closed), renewals due in 30 days, CSV export. |
+| **Admin** | Discounts with limits and dates, staff accounts, full audit log (who did what, on which record, when), in-app "How to use" guide. |
+
+**Roles:** Admin (everything), Staff (selling, billing, payments; catalog read-only), Customer (own data only, in the portal).
 
 ---
 
 ## Run it
 
-You need **Node 20+** and **PostgreSQL 14+**.
-
-**1. Postgres (once).** On a Mac with Homebrew:
+You need **Node 20+** and a **PostgreSQL** database (local, or hosted on [Neon](https://neon.tech)).
 
 ```bash
-brew install postgresql@16
-brew services start postgresql@16
-createdb brightloop
-```
-
-(Or install [Postgres.app](https://postgresapp.com), click Initialize, then run `createdb brightloop`.)
-
-**2. Install and build the demo database (once):**
-
-```bash
+# 1. Install everything and create the settings files (server/.env, client/.env)
 npm run setup
-```
 
-This creates `server/.env` and `client/.env`, installs everything, creates the tables and loads
-a year of demo data (customers, subscriptions, invoices, payments, overdue accounts).
+# 2. Point the server at your database: edit DATABASE_URL in server/.env
+#    Neon:  postgresql://USER:PASSWORD@ep-xxxx.region.aws.neon.tech/brightloop?sslmode=require
+#    Local: postgresql://localhost:5432/brightloop
 
-**3. Start both apps:**
+# 3. Create the tables and load a year of demo data
+npm --prefix server run db:setup
 
-```bash
+# 4. Start the API (port 4000) and the web app (port 5173) together
 npm run dev
 ```
 
-Open **http://localhost:5173**. The API runs on port 4000.
+Open **http://localhost:5173**. When the server starts, its terminal says whether the database is connected, and what to fix if not.
 
-### Logins (password for all: `Brightloop@123`)
+### Demo logins (password `Brightloop@123`)
 
-| Who | Email | Sees |
-|---|---|---|
-| Admin | `admin@brightloop.dev` | Everything, including taxes, discounts, staff |
-| Staff | `staff1@brightloop.dev` | Day-to-day: customers, subscriptions, invoices, payments |
-| Customer | `acme@example.com` | The portal: own subscriptions, invoices, payments |
-| Customer (overdue) | `finance@kaverifoods.in` | A customer with unpaid invoices |
+| Role | Email |
+|---|---|
+| Admin | `admin@brightloop.dev` |
+| Staff | `staff1@brightloop.dev` |
+| Customer (has overdue invoices) | `finance@kaverifoods.in` |
+| Customer | `acme@example.com` |
 
-### Useful commands
+### Commands
 
 | Command | Does |
 |---|---|
-| `npm run dev` | Starts server and web app together |
-| `npm run reset-demo` | Wipes the database and reloads the demo data (dates move with today) |
+| `npm run setup` | Installs server and client, creates `.env` files, creates tables, loads demo data |
+| `npm run dev` | Starts the API and the web app together |
+| `npm run reset-demo` | Wipes the database and reloads the demo data (dated around today) |
 | `npm test` | Server and client tests |
 
-### No database on the machine you're presenting from?
+### Settings (`server/.env`)
 
-Set `VITE_USE_MOCKS=true` in `client/.env` and run `cd client && npm run dev`. The web app then
-uses built-in demo data, no server needed. Mock logins use password `Demo@12345`
-(`admin@brightloop.test`, `staff@brightloop.test`, `customer@brightloop.test`).
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection |
+| `JWT_SECRET`, `JWT_EXPIRES_IN` | Login sessions (setup generates a random secret) |
+| `DEMO_MODE` | `true` lets the Billing page bill "as of" a future date to show catch-up billing |
+| `SMTP_*`, `MAIL_FROM` | Email for invoices and reminders (optional; reminders are still logged without it) |
+| `AI_ENABLED`, `LLM_PROVIDER`, `LLM_API_KEY` | Optional copilot, reminder drafts and invoice explanations |
+| `BILLING_CRON`, `LIFECYCLE_CRON` | Daily schedules (Asia/Kolkata) |
 
-### Settings worth knowing (`server/.env`)
-
-- `DEMO_MODE=true` lets the Billing page bill "as of" a future date, to show catch-up billing.
-- SMTP: fill in Mailtrap (or any SMTP) details to actually send invoice and reminder emails.
-  Without them the app works the same and still logs reminders on the invoice.
-- `AI_ENABLED=true` plus `LLM_PROVIDER` and `LLM_API_KEY` turns on the Copilot, reminder drafts
-  and invoice explanations. With `false` they fall back to built-in answers.
-
-Your company's name, address, GSTIN and UPI ID (printed on invoices and the UPI QR) are in
-`client/.env` (`VITE_COMPANY_*`, `VITE_UPI_ID`).
+Company name, address, GSTIN and UPI ID printed on invoices are in `client/.env` (`VITE_COMPANY_*`, `VITE_UPI_ID`).
+`VITE_USE_MOCKS=true` runs the web app on built-in sample data with no server (logins `admin@brightloop.test` / `Demo@12345`).
 
 ---
 
-## How the billing stays correct
+## How it is built
 
-- Money is integer paise everywhere; rounding is half-up per line.
-- The billing run holds a Postgres advisory lock, bills each subscription in its own
-  transaction, catches up every missed period, and a unique index on
-  (subscription, period start) makes it impossible to bill a period twice.
-- Invoice numbers (`INV-YYYY-000001`) are consecutive with no gaps, as GST requires.
-- Payments lock the invoice row, can't exceed the balance or be dated in the future, and turn
-  the invoice Paid when covered. Only an admin can void one.
-- Edits to plans, prices or taxes never change invoices already issued.
-
----
-
-## 🧠 ML Late-Payment Risk Model
-
-The model is trained using scikit-learn on historical customer billing data to predict late invoice settlement risk.
-Features evaluated:
-- `customer_late_count`
-- `customer_invoice_count`
-- `log_amount_paise`
-- `payment_terms_days`
-- `billing_period` (one-hot: DAILY, WEEKLY, MONTHLY, YEARLY)
-- `days_since_signup`
-- `prior_partial_payments`
-
-### To Train & Export Model:
-```bash
-python ml/train.py
+```mermaid
+flowchart LR
+    subgraph Browser
+        UI["React 19 + TypeScript<br/>Ant Design, Tailwind<br/>(client/)"]
+        OCR["Receipt reading<br/>(Tesseract, in browser)"]
+    end
+    subgraph API["Express API (server/)"]
+        MW["helmet · CORS · rate limits<br/>JWT auth → role check → zod validation"]
+        MOD["modules: auth · catalog · quotations ·<br/>subscriptions · pricing · billing ·<br/>payments · reports · portal · documents · ai"]
+        JOBS["node-cron jobs<br/>billing run · lifecycle"]
+    end
+    DB[("PostgreSQL<br/>Prisma ORM")]
+    MAIL["SMTP email"]
+    UI -->|"/api (JSON)"| MW --> MOD --> DB
+    JOBS --> MOD
+    MOD --> MAIL
+    OCR --> UI
 ```
-This script exports `ml/model.json` with standardized weights, intercepts, and metrics. At runtime, Node evaluates risk in under 1ms without a live Python service.
+
+| Layer | Stack |
+|---|---|
+| Frontend | React 19, Vite, TypeScript, Ant Design 6, Tailwind 4, React Router 7, Recharts, Tesseract.js |
+| Backend | Node 20, Express, TypeScript, Prisma, zod, JWT + bcrypt, node-cron, PDFKit, Nodemailer |
+| Database | PostgreSQL (Neon), raw SQL for sequences, partial unique index and CHECK constraints |
+| Tests | Vitest (server and client) |
+
+Money is stored and sent as **integer paise** everywhere. Business dates use Asia/Kolkata.
 
 ---
 
-## 🧪 Running Tests
+## How billing stays correct
+
+- **Never billed twice:** the run holds a Postgres advisory lock, bills each subscription in its own transaction, and a unique index on (subscription, period start) makes a duplicate invoice impossible at the database level.
+- **Never skipped:** if the scheduler was down, the next run catches up every missed period. Month-end dates follow the original anchor day (Jan 31 → Feb 28 → Mar 31).
+- **Discounts:** the best discount per line wins (no stacking); usage limits are claimed atomically, and when a limit runs out mid-run the invoice is still created without it.
+- **Consecutive invoice numbers** (`INV-YYYY-000001`), as GST requires.
+- **Payments** lock the invoice row, can't exceed the balance or be dated in the future, and mark the invoice Paid when covered. Only admins can void one.
+- **Snapshots:** prices, tax and the customer's details are copied onto lines and invoices, so later edits never change what was billed.
+- **Audit log** records every change with who, what and when.
+
+---
+
+## API
+
+All routes are under `/api`, JSON, `Authorization: Bearer <token>`. List endpoints return `{ data, page, limit, total }`; errors return `{ error: { code, message, fields? } }`.
+
+| Module | Main endpoints |
+|---|---|
+| auth | `POST /auth/signup`, `/login`, `/forgot-password`, `/reset-password` · `GET /auth/me` · customers CRUD `/auth/customers` · staff `POST /auth/staff`, `GET /auth/users`, `POST /auth/users/:id/deactivate` / `reactivate` |
+| catalog | `/catalog/products` (+ `/archive`, `/restore`), `/catalog/variants`, `/catalog/plans` (+ `/archive`, `/restore`), `/catalog/taxes` |
+| quotations | `GET/POST /quotations`, `PUT /quotations/:id` |
+| subscriptions | `GET /subscriptions?status&customerId&planId&q&expiringWithin`, `POST`, `PUT /:id`, `POST /:id/transition`, `/pause`, `/resume`, `/renew`, `/close` |
+| pricing | `GET/POST /pricing/discounts`, `PUT /pricing/discounts/:id` |
+| billing | `POST /billing/run`, `GET /billing/runs`, `GET /billing/invoices`, `GET /billing/invoices/:id`, `POST …/confirm`, `…/cancel`, `/confirm-drafts`, `…/:id/remind`, `/remind-overdue` |
+| payments | `GET/POST /payments`, `POST /payments/:id/void` |
+| documents | `GET /invoices/:id/pdf`, `POST /invoices/:id/send` |
+| reports | `GET /reports/summary`, `/aging`, `/overdue`, `/csv`, `/audit` |
+| portal | `/portal/profile`, `/portal/subscriptions` (+ `self-subscribe`, pause, resume, renew, close), `/portal/invoices`, `/portal/payments` |
+| ai | `POST /ai/ask`, `GET /ai/invoices/:id/risk`, `POST /ai/invoices/:id/reminder`, `POST /ai/portal/invoices/:id/explain` |
+
+Full details: [`docs/SRS.md`](docs/SRS.md) and [`docs/BACKEND_CHANGES.md`](docs/BACKEND_CHANGES.md).
+
+---
+
+## Project structure
+
+```
+├── client/                 React web app
+│   ├── src/pages/          one file per screen (dashboard, invoices, portal, …)
+│   ├── src/components/     shared UI (payment reader, statement import, UPI QR, …)
+│   ├── src/api/            API client, error messages, route mapping, mock data
+│   └── src/lib/            money, GST, dates, statement parsing (with tests)
+├── server/                 Express API
+│   ├── src/modules/        one folder per area: routes.ts, schemas.ts, service.ts
+│   ├── src/jobs/           daily billing and lifecycle jobs
+│   ├── src/lib/            money, dates, audit, errors, mailer
+│   ├── prisma/             schema, migrations, constraints SQL, seed + demo data
+│   └── tests/              Vitest suites
+├── ml/                     risk model training (scikit-learn → model.json)
+├── docs/                   SRS, decisions, changes, screenshots
+└── DEMO.md                 8-minute demo script
+```
+
+---
+
+## Tests
 
 ```bash
 npm test
 ```
 
-The server suite covers authentication, RBAC, money precision, anchor-day clamping, catalog
-rules, state machines, pricing, payments, portal isolation and AI guardrails. The live billing
-tests use a separate `test` schema: run `cd server && npx tsx setup_test_db.ts` once first.
+The server suite covers authentication, roles, money precision, anchor-day dates, catalog rules, status transitions, pricing and discounts, payments, portal isolation and AI guardrails. The client suite covers money formatting, GST splits, reminders and bank statement parsing. The live billing tests use a separate `test` schema: run `cd server && npx tsx setup_test_db.ts` once first.
 
 ---
 
-## 🎬 10-Step Acceptance Demo Script (SRS 10.2)
+## Late-payment risk model
 
-1. **Authentication & RBAC**:
-   - `POST /api/auth/login` as `admin@brightloop.dev`.
-   - Access `GET /api/reports/summary`.
-2. **Catalog Creation**:
-   - Create a product `Brightloop Cloud Backup` (`POST /api/catalog/products`).
-   - Add a variant `1TB Storage` with `extraPrice: 50000`.
-3. **Quotation & Subscription**:
-   - Create quotation template with product and plan.
-   - Create subscription in `DRAFT` status (`POST /api/subscriptions`).
-4. **Subscription Activation**:
-   - Transition: `DRAFT` -> `QUOTATION` -> `CONFIRMED` -> `ACTIVE`.
-   - Verify `nextBillingDate` is initialized.
-5. **Billing Run**:
-   - Run billing (`POST /api/billing/run`) with `asOf: "2026-11-01"`.
-   - Verify generated invoice numbers follow `INV-YYYY-XXXXXX`.
-6. **Invoice & Pricing Accuracy**:
-   - Verify plan fee is isolated on line 1 with 0 tax.
-   - Verify discount applied to lines without stacking.
-7. **Payment Recording**:
-   - Record partial payment (`POST /api/payments`). Invoice remains `CONFIRMED`.
-   - Record remaining payment. Invoice automatically transitions to `PAID`.
-8. **Payment Voiding**:
-   - Admin voids payment (`POST /api/payments/:id/void`).
-   - Invoice reverts from `PAID` to `CONFIRMED`.
-9. **Customer Portal**:
-   - Login as Customer.
-   - `GET /api/portal/invoices/:id` loads own invoice; accessing another customer returns 404.
-   - `GET /api/documents/:id/pdf` generates formatted PDF.
-10. **AI Features**:
-   - Late-payment risk score returns badge and top reasons (`GET /api/ai/invoices/:id/risk`).
-   - Copilot answers questions without SQL injection (`POST /api/ai/ask`).
-   - Overdue reminder draft generated (`POST /api/ai/invoices/:id/reminder`).
-   - Customer requests plain-English explanation (`POST /api/ai/portal/invoices/:id/explain`).
+A logistic regression trained with scikit-learn on billing history predicts which invoices are likely to be paid late. Features: `customer_late_count`, `customer_invoice_count`, `log_amount_paise`, `payment_terms_days`, `billing_period` (one-hot), `days_since_signup`, `prior_partial_payments`.
+
+```bash
+python ml/train.py
+```
+
+This exports `ml/model.json` (standardised weights, intercept, metrics). The server scores invoices from it in under a millisecond, with no Python service at runtime.

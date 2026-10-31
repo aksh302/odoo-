@@ -141,8 +141,8 @@ export default function ProductsPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
           <Space>
-            <Switch size="small" checked={showArchived} onChange={setShowArchived} aria-label="Show archived" />
-            <span>Show archived</span>
+            <Switch id="products-archived" size="small" checked={showArchived} onChange={setShowArchived} aria-label="Show archived" />
+            <label htmlFor="products-archived" className="cursor-pointer select-none">Show archived</label>
           </Space>
         </div>
         {list.error && <Alert className="mb-4" type="error" showIcon title={list.error} />}

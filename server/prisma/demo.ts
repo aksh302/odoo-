@@ -183,6 +183,9 @@ export async function seedDemoHistory(prisma: PrismaClient, core: Core, hash: st
     if (c.spec.pausedThisMonth) await SubscriptionService.transitionStatus(core.staff1.id, c.id, SubscriptionStatus.PAUSED);
   }
 
+  // Invoices were created just now; date them as issued on their period start (10:00 IST)
+  await prisma.$executeRaw`UPDATE "Invoice" SET "createdAt" = "periodStart" + interval '4 hours 30 minutes' WHERE "isSynthetic" = false`;
+
   // ---- payments ----
   const invoices = await prisma.invoice.findMany({
     where: { isSynthetic: false, status: InvoiceStatus.CONFIRMED },

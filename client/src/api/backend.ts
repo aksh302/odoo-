@@ -270,6 +270,23 @@ const RULES: Rule[] = [
     },
   },
   { method: 'GET', path: /^\/portal\/payments$/, to: same },
+  {
+    method: 'GET',
+    path: /^\/portal\/subscriptions$/,
+    to: same,
+    out: (d) => (d?.data ? { ...d, data: d.data.map((s: Json) => ({ ...s, recurringAmount: recurring(s) })) } : d),
+  },
+  {
+    method: 'GET',
+    path: /^\/portal\/subscriptions\/(\d+)$/,
+    to: same,
+    out: (d) => {
+      const s = d?.subscription
+      if (!s || d.lines) return d
+      const { lines = [], invoices = [], ...rest } = s
+      return { subscription: { ...rest, recurringAmount: recurring(s) }, lines, invoices }
+    },
+  },
   { method: 'GET', path: /^\/portal\/invoices$/, to: same, out: invoiceListOut },
   { method: 'GET', path: /^\/portal\/invoices\/\d+$/, to: same, out: invoiceDetailOut },
 ]

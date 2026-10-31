@@ -199,12 +199,12 @@ export default function PlansPage() {
             onChange={setPeriod}
           />
           <Space>
-            <Switch size="small" checked={availableOnly} onChange={setAvailableOnly} aria-label="Available today" />
-            <span>Available today</span>
+            <Switch id="plans-available" size="small" checked={availableOnly} onChange={setAvailableOnly} aria-label="Available today" />
+            <label htmlFor="plans-available" className="cursor-pointer select-none">Available today</label>
           </Space>
           <Space>
-            <Switch size="small" checked={showArchived} onChange={setShowArchived} aria-label="Show archived" />
-            <span>Show archived</span>
+            <Switch id="plans-archived" size="small" checked={showArchived} onChange={setShowArchived} aria-label="Show archived" />
+            <label htmlFor="plans-archived" className="cursor-pointer select-none">Show archived</label>
           </Space>
         </div>
         {list.error && <Alert className="mb-4" type="error" showIcon title={list.error} />}

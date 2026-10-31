@@ -162,8 +162,8 @@ export default function InvoicesPage() {
             onChange={(r) => setRange(r)}
           />
           <Space>
-            <Switch size="small" checked={overdue} onChange={setOverdue} aria-label="Overdue only" />
-            <span>Overdue only</span>
+            <Switch id="invoices-overdue" size="small" checked={overdue} onChange={setOverdue} aria-label="Overdue only" />
+            <label htmlFor="invoices-overdue" className="cursor-pointer select-none">Overdue only</label>
           </Space>
         </div>
         {list.error && <Alert className="mb-4" type="error" showIcon title={list.error} />}

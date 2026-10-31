@@ -82,7 +82,8 @@ export class SubscriptionService {
       include: {
         customer: { select: { id: true, name: true, email: true, profile: true } },
         plan: true,
-        lines: true,
+        // each line's tax, so the detail page can show GST per line and in the total
+        lines: { include: { tax: true }, orderBy: { id: 'asc' } },
         invoices: {
           where: { isSynthetic: false },
           orderBy: { periodStart: 'desc' },

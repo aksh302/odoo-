@@ -186,12 +186,31 @@ export class BillingService {
         await Promise.all(
           chunk.map(async (sub) => {
             try {
-              // One transaction per subscription
+              // One transaction per subscription. Counts are added only once it commits, and a
+              // transaction Postgres cancels as a deadlock / serialization conflict is retried.
+              let createdHere = 0;
+              let skippedHere = 0;
+              for (let attempt = 1; ; attempt++) {
+                createdHere = 0;
+                skippedHere = 0;
+                try {
               await prisma.$transaction(
                 async (tx) => {
                   if (sub.status !== SubscriptionStatus.ACTIVE || !sub.nextBillingDate) {
-                    skippedCount++;
+                    skippedHere++;
                     return;
+                  }
+
+                  // Lock every discount this subscription could use, up front and in id order.
+                  // Catch-up billing can claim discounts across several periods; locking them all
+                  // first in one fixed order means parallel subscriptions never deadlock.
+                  const productIds = new Set(sub.lines.map((l) => l.productId));
+                  const lockIds = activeDiscounts
+                    .filter((d) => d.scope === 'SUBSCRIPTION' || d.products.some((p) => productIds.has(p.productId)))
+                    .map((d) => d.id)
+                    .sort((a, b) => a - b);
+                  if (lockIds.length) {
+                    await tx.$queryRaw`SELECT id FROM "Discount" WHERE id IN (${Prisma.join(lockIds)}) ORDER BY id FOR UPDATE`;
                   }
 
                   // Catch-up loop: generate invoices until nextBillingDate > effectiveAsOf or sub is expired
@@ -240,14 +259,19 @@ export class BillingService {
                     );
                     const claimed: number[] = [];
                     let ranOut: number | null = null;
-                    for (const line of pricing.lines) {
-                      if (!line.discountId) continue;
+                    // Claim in discount-id order: every transaction locks discount rows in the same
+                    // order, so two subscriptions billed in parallel can't deadlock each other.
+                    const toClaim = pricing.lines
+                      .map((l) => l.discountId)
+                      .filter((id): id is number => !!id)
+                      .sort((a, b) => a - b);
+                    for (const discountId of toClaim) {
                       try {
-                        await PricingService.claimDiscountUsageTx(tx, line.discountId);
-                        claimed.push(line.discountId);
+                        await PricingService.claimDiscountUsageTx(tx, discountId);
+                        claimed.push(discountId);
                       } catch (e: any) {
                         if (e?.code !== 'DISCOUNT_EXHAUSTED') throw e;
-                        ranOut = line.discountId;
+                        ranOut = discountId;
                         break;
                       }
                     }
@@ -300,7 +324,7 @@ export class BillingService {
                     },
                   });
 
-                  createdCount++;
+                  createdHere++;
 
                   // Advance to next period
                   curBillingDate = nextPeriodStart(curBillingDate, sub.plan.billingPeriod, anchorDay);
@@ -314,6 +338,14 @@ export class BillingService {
               },
               { timeout: 30000, maxWait: 15000 },
               );
+                  break;
+                } catch (err: any) {
+                  const retryable = err?.code === 'P2034' || /deadlock detected|could not serialize/i.test(String(err?.message));
+                  if (!retryable || attempt >= 3) throw err;
+                }
+              }
+              createdCount += createdHere;
+              skippedCount += skippedHere;
             } catch (err: any) {
               failedCount++;
               errorDetails.push({
@@ -553,8 +585,16 @@ export class BillingService {
       : [];
     const numberOf = new Map(subs.map((x) => [x.id, x.number]));
 
+    // triggeredBy is stored as "user:<id>" or "cron"; show the person's name
+    const userIds = rows.map((r) => /^user:(\d+)$/.exec(r.triggeredBy)?.[1]).filter(Boolean).map(Number);
+    const people = userIds.length
+      ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
+      : [];
+    const personName = new Map(people.map((u) => [`user:${u.id}`, u.name]));
+
     const data = rows.map((r) => ({
       ...r,
+      triggeredBy: personName.get(r.triggeredBy) ?? (r.triggeredBy === 'cron' ? 'Daily schedule' : r.triggeredBy),
       errorLog: Array.isArray(r.errorLog) && r.errorLog.length
         ? (r.errorLog as any[]).map((e) => ({
             subscriptionNumber: e.subscriptionId ? numberOf.get(e.subscriptionId) ?? `#${e.subscriptionId}` : '—',
