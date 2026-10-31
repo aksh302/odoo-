@@ -12,6 +12,7 @@ import type {
 } from '../../lib/types'
 import { customers, users } from './auth'
 import { getVariants, plans, products, taxes } from './catalog'
+import { applyPayment, buildInvoice, invoices, isOverdue, renumberSeeded } from './ledger'
 import { contains, fail, nextId, paginate, requireRole, todayISO } from './util'
 import type { MockCtx, MockResult, MockRoutes } from './util'
 
@@ -40,10 +41,35 @@ function snapshotLine(productId: number, variantId: number | null | undefined, q
   }
 }
 
-const findCustomer = (id: number): User | undefined =>
+export const findCustomer = (id: number): User | undefined =>
   customers.find((c) => c.id === id) ?? users.find((u) => u.id === id && u.role === 'CUSTOMER')
 
 const planAvailable = (p: Plan, on = todayISO()) => !p.isArchived && p.startDate <= on && on <= p.endDate
+
+export const snapshotOf = (c: User) => ({
+  name: c.name,
+  email: c.email,
+  company: c.profile?.company ?? null,
+  billingAddress: c.profile?.billingAddress ?? null,
+  taxId: c.profile?.taxId ?? null,
+})
+
+function invoiceSummaries(subscriptionId: number): InvoiceSummary[] {
+  return invoices
+    .filter((i) => i.subscriptionId === subscriptionId)
+    .sort((a, b) => b.periodStart.localeCompare(a.periodStart))
+    .map((i) => ({
+      id: i.id,
+      number: i.number,
+      periodStart: i.periodStart,
+      periodEnd: i.periodEnd,
+      dueDate: i.dueDate,
+      total: i.total,
+      amountPaid: i.amountPaid,
+      status: i.status,
+      overdue: isOverdue(i),
+    }))
+}
 
 // ---------- templates ----------
 
@@ -77,13 +103,11 @@ function validateTemplate(b: any): MockResult | null {
 
 // ---------- subscriptions seed ----------
 
-interface SubRecord extends Subscription {
+export interface SubRecord extends Subscription {
   lines: SubscriptionLine[]
-  invoices: InvoiceSummary[]
 }
-const subs: SubRecord[] = []
+export const subs: SubRecord[] = []
 let subSeq = 0
-let invSeq = 400
 
 function makeSub(i: number, status: SubscriptionStatus, planId: number, customer: User, startOffset: number, lineSpec: [number, number | null, number][]): SubRecord {
   const plan = plans.find((p) => p.id === planId)!
@@ -104,7 +128,6 @@ function makeSub(i: number, status: SubscriptionStatus, planId: number, customer
     nextBillingDate: null,
     createdAt: quotationDate.toISOString(),
     lines: lineSpec.map(([p, v, q]) => snapshotLine(p, v, q)!).filter(Boolean),
-    invoices: [],
   }
   if (status === 'ACTIVE' || status === 'PAUSED' || status === 'CLOSED') {
     s.anchorDay = start.date()
@@ -115,22 +138,30 @@ function makeSub(i: number, status: SubscriptionStatus, planId: number, customer
       next = addPeriods(s.startDate, plan.billingPeriod, periods.length, s.anchorDay)
     }
     s.nextBillingDate = status === 'CLOSED' ? null : next
-    const recurring = plan.price + s.lines.reduce((a, l) => a + l.amount, 0)
-    const tax = s.lines.reduce((a, l) => a + Math.floor((l.amount * (l.tax?.percent ?? 0) * 100 + 5000) / 10000), 0)
-    s.invoices = periods.slice(-6).reverse().map((ps, k) => {
-      const due = dayjs(ps).add(s.paymentTerms, 'day')
-      const unpaid = k === 0 && i % 3 !== 0
-      return {
-        id: ++invSeq,
-        number: `INV-${dayjs(ps).year()}-${String(invSeq).padStart(6, '0')}`,
+    // Seed past invoices (latest 6 periods) into the ledger.
+    const customer = findCustomer(s.customerId)!
+    periods.slice(-6).forEach((ps, k, arr) => {
+      const inv = buildInvoice({
+        subscriptionId: s.id,
+        subscriptionNumber: s.number,
+        customerId: s.customerId,
+        customer: snapshotOf(customer),
+        plan,
+        lines: s.lines,
         periodStart: ps,
-        periodEnd: iso(dayjs(addPeriods(ps, plan.billingPeriod, 1, s.anchorDay)).subtract(1, 'day')),
-        dueDate: iso(due),
-        total: recurring + tax,
-        amountPaid: unpaid ? 0 : recurring + tax,
-        status: unpaid ? 'CONFIRMED' : 'PAID',
-        overdue: unpaid && due.isBefore(today()),
+        anchorDay: s.anchorDay,
+        paymentTerms: s.paymentTerms,
+        claimDiscounts: false,
+      })
+      const latest = k === arr.length - 1
+      // Latest invoice is unpaid for 2 of every 3 subscriptions; one gets a part payment.
+      if (!latest || i % 3 === 0) {
+        applyPayment(inv, { method: (['UPI', 'BANK_TRANSFER', 'CARD'] as const)[k % 3], amount: inv.total, date: iso(dayjs(ps).add(5, 'day')), reference: `TXN${100000 + inv.id}`, note: null })
+      } else if (i % 5 === 1) {
+        applyPayment(inv, { method: 'UPI', amount: Math.floor(inv.total / 2), date: iso(dayjs(ps).add(3, 'day')), reference: null, note: 'Part payment' })
       }
+      inv.emailedAt = inv.createdAt
+      invoices.push(inv)
     })
   }
   return s
@@ -164,12 +195,13 @@ function makeSub(i: number, status: SubscriptionStatus, planId: number, customer
     subs.push(makeSub(i + 1, status, planId, pool[i % pool.length], offset, lines))
   })
   subs.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')) // newest first
+  renumberSeeded()
 })()
 
 function view(s: SubRecord): Subscription {
   const c = findCustomer(s.customerId)
   const plan = plans.find((p) => p.id === s.planId)
-  const { lines, invoices: _inv, ...rest } = s
+  const { lines, ...rest } = s
   return {
     ...rest,
     customer: c && { id: c.id, name: c.name, email: c.email, company: c.profile?.company ?? null },
@@ -316,7 +348,7 @@ export const subscriptionRoutes: MockRoutes = {
     if (denied) return denied
     const s = subs.find((x) => x.id === Number(ctx.params.id))
     if (!s) return fail(404, 'NOT_FOUND', 'Subscription not found')
-    return [200, { subscription: view(s), lines: s.lines, invoices: s.invoices }]
+    return [200, { subscription: view(s), lines: s.lines, invoices: invoiceSummaries(s.id) }]
   },
 
   'POST /subscriptions': (ctx) => {
@@ -347,7 +379,6 @@ export const subscriptionRoutes: MockRoutes = {
       nextBillingDate: null,
       createdAt: new Date().toISOString(),
       lines: built.lines!,
-      invoices: [],
     }
     subs.unshift(s)
     return [201, { subscription: view(s) }]

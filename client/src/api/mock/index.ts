@@ -3,6 +3,7 @@ import type { AxiosAdapter, AxiosResponse } from 'axios'
 import { authRoutes, userFromToken } from './auth'
 import { catalogRoutes } from './catalog'
 import { subscriptionRoutes } from './subscriptions'
+import { billingRoutes } from './billing'
 import { fail } from './util'
 import type { MockResult, MockRoutes } from './util'
 
@@ -23,6 +24,7 @@ const ALL_ROUTES: MockRoutes = {
   ...authRoutes,
   ...catalogRoutes,
   ...subscriptionRoutes,
+  ...billingRoutes,
 }
 
 // Pre-compile 'PUT /products/:id' -> regex once.

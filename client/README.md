@@ -45,6 +45,12 @@ npm run dev               # http://localhost:5173
 | `src/pages/SubscriptionsPage.tsx` | Status tabs, search, plan filter, Next invoice column with the cycle ring |
 | `src/pages/SubscriptionFormPage.tsx` | New / edit (Draft and Quotation only): template, customer, plan, dates, terms, lines, live invoice estimate |
 | `src/pages/SubscriptionDetailPage.tsx` | Lifecycle steps, only-valid status buttons (disabled ones explain why), billing ring, lines with tax and totals, invoices |
+| `src/pages/InvoicesPage.tsx` | Status tabs, period range, overdue toggle, select drafts and confirm, Confirm all drafts |
+| `src/pages/InvoiceDetailPage.tsx` | Balance card, bill-to, lines with discount and tax, totals, payments (Admin can void), Confirm / Record payment / Send / Download PDF / Print / Cancel |
+| `src/pages/InvoicePrintPage.tsx` | A4 printable tax invoice; also stands in for the PDF in mock mode |
+| `src/pages/BillingPage.tsx` | Run billing (with "Bill as of" date in demo mode), result counts, run history with failure log |
+| `src/pages/PaymentsPage.tsx` | "Waiting for payment" with Record payment, and "Received" with date filter |
+| `src/components/RecordPaymentModal.tsx` | Method, amount (defaults to balance, part payments allowed), date, reference |
 | `src/lib/cycle.ts` | Billing-period maths (anchor day), cycle progress, and the allowed status actions from SRS 9.5 |
 | `src/pages/PlansPage.tsx` | Plans table with availability status, filters, create/edit modal with period, dates and the four lifecycle switches |
 | `src/routes.tsx` | Every route from SRS 9.7. Not-yet-built pages show a placeholder listing what to build |
@@ -75,7 +81,7 @@ Fonts: Bricolage Grotesque (headings, wordmark) and Onest (everything else), bun
 
 ## Suggested build order
 
-1. Auth ✅ → 2. Products ✅, Plans ✅, Customers (list ✅, form to do) → 3. Subscriptions ✅ + Templates ✅ → 4. Invoices, Billing, Payments →
+1. Auth ✅ → 2. Products ✅, Plans ✅, Customers (list ✅, form to do) → 3. Subscriptions ✅ + Templates ✅ → 4. Invoices ✅, Billing ✅, Payments ✅ →
 5. Portal → 6. Dashboard → 7. Taxes, Discounts, Staff, Audit (cut first if short on time)
 
 ## Notes for the backend (Akshaya)
@@ -84,3 +90,6 @@ Fonts: Bricolage Grotesque (headings, wordmark) and Onest (everything else), bun
 - The subscription list expects each row to include `customer` (id, name, email, company), the full `plan`,
   and `recurringAmount` (plan price + line amounts, pre-tax, in paise).
 - Field errors for lines use keys like `lines.0.quantity`; the form puts them under the right row.
+- `GET /invoices` rows should include `subscriptionNumber`, `customerSnapshot` and the derived `overdue` flag.
+- `GET /payments` rows should include `invoiceNumber` and `customerName`.
+- Invoice lines can carry `discountName` so the UI can show which discount applied.

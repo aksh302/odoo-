@@ -5,6 +5,11 @@ import { ProtectedRoute, PublicOnlyRoute } from './auth/ProtectedRoute'
 import { AppLayout, PortalLayout } from './components/AppLayout'
 import { PlaceholderPage } from './components/PlaceholderPage'
 import CustomersPage from './pages/CustomersPage'
+import BillingPage from './pages/BillingPage'
+import InvoiceDetailPage from './pages/InvoiceDetailPage'
+import InvoicePrintPage from './pages/InvoicePrintPage'
+import InvoicesPage from './pages/InvoicesPage'
+import PaymentsPage from './pages/PaymentsPage'
 import PlansPage from './pages/PlansPage'
 import SubscriptionDetailPage from './pages/SubscriptionDetailPage'
 import SubscriptionFormPage from './pages/SubscriptionFormPage'
@@ -32,6 +37,8 @@ export function AppRoutes() {
 
       {/* Admin + Staff back office */}
       <Route element={<ProtectedRoute roles={['ADMIN', 'STAFF']} />}>
+        {/* Printable invoice opens in its own tab, without the app layout */}
+        <Route path="/invoices/:id/print" element={<InvoicePrintPage />} />
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<P title="Dashboard" todo="KPI cards (active, MRR, ARR, collected, outstanding, overdue), revenue-by-month chart, overdue table, aging buckets, filter bar, summary totals, CSV export" />} />
           <Route path="/customers" element={<CustomersPage />} />
@@ -43,10 +50,10 @@ export function AppRoutes() {
           <Route path="/subscriptions/new" element={<SubscriptionFormPage />} />
           <Route path="/subscriptions/:id" element={<SubscriptionDetailPage />} />
           <Route path="/subscriptions/:id/edit" element={<SubscriptionFormPage />} />
-          <Route path="/invoices" element={<P title="Invoices" todo="list with filters and overdue toggle; bulk Confirm drafts" />} />
-          <Route path="/invoices/:id" element={<P title="Invoice" todo="lines, totals, payments; Confirm, Cancel, Send, Download PDF, Record payment" />} />
-          <Route path="/billing" element={<P title="Billing" todo="Run billing button (date picker in demo mode), results panel, run history with failures" />} />
-          <Route path="/payments" element={<P title="Payments" todo="payment list; record-payment modal; outstanding invoices tab" />} />
+          <Route path="/invoices" element={<InvoicesPage />} />
+          <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
+          <Route path="/billing" element={<BillingPage />} />
+          <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/audit" element={<P title="Audit Log" todo="audit table with entity filter" />} />
 
           {/* Admin only */}

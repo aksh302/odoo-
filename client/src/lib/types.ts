@@ -143,6 +143,78 @@ export interface InvoiceSummary {
   overdue?: boolean
 }
 
+// ---- Invoices, payments, billing runs ----
+
+export interface InvoiceLine {
+  id: number
+  productId?: number | null // null for the plan-fee line
+  description: string
+  quantity: number
+  unitPrice: number
+  amount: number
+  discountId?: number | null
+  discountName?: string | null
+  discountAmount: number
+  taxPercent: number
+  taxAmount: number
+}
+
+export interface CustomerSnapshot {
+  name: string
+  email?: string
+  company?: string | null
+  billingAddress?: string | null
+  taxId?: string | null
+}
+
+export interface Invoice {
+  id: number
+  number: string // INV-2026-000001
+  subscriptionId: number
+  subscriptionNumber?: string
+  customerId: number
+  customerSnapshot: CustomerSnapshot
+  periodStart: string
+  periodEnd: string
+  dueDate: string
+  subtotal: number
+  discountTotal: number
+  taxTotal: number
+  total: number
+  amountPaid: number
+  status: InvoiceStatus
+  overdue?: boolean // derived by the server
+  emailedAt?: string | null
+  createdAt: string
+}
+
+export interface Payment {
+  id: number
+  invoiceId: number
+  invoiceNumber?: string
+  customerName?: string
+  method: PaymentMethod
+  amount: number
+  date: string
+  reference?: string | null
+  note?: string | null
+  voidedAt?: string | null
+  voidReason?: string | null
+  createdAt?: string
+}
+
+export interface BillingRun {
+  id: number
+  startedAt: string
+  finishedAt?: string | null
+  triggeredBy: string
+  asOf: string
+  created: number
+  skipped: number
+  failed: number
+  errorLog?: { subscriptionNumber: string; message: string }[] | null
+}
+
 /** Every list endpoint returns this. */
 export interface Paged<T> {
   data: T[]
