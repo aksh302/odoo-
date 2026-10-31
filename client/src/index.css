@@ -1,0 +1,43 @@
+/* Tailwind theme + utilities only. Preflight is left out so it doesn't fight Ant Design's own reset. */
+@layer theme, base, antd, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #f5f6f8;
+}
+
+/* Brightloop type: Bricolage for headings, Onest everywhere else, aligned digits for money. */
+h1.ant-typography,
+h2.ant-typography,
+h3.ant-typography,
+h4.ant-typography {
+  font-family: 'Bricolage Grotesque Variable', 'Segoe UI', sans-serif;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+body,
+.ant-table,
+.ant-input-number-input {
+  font-variant-numeric: tabular-nums;
+}
+.ant-layout-sider-children {
+  overflow-y: auto;
+}
+
+/* Line editor columns: stacked on phones, a row on wider screens. */
+:root {
+  --line-cols: 1fr;
+}
+@media (min-width: 640px) {
+  :root {
+    --line-cols: 2.2fr 1.5fr 0.9fr 1fr 32px;
+  }
+}
