@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.env.test
+server/.env
+server/.env.test
+*.log
+
