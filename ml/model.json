@@ -1,0 +1,56 @@
+{
+  "feature_names": [
+    "customer_late_count",
+    "customer_invoice_count",
+    "log_amount_paise",
+    "payment_terms_days",
+    "period_DAILY",
+    "period_WEEKLY",
+    "period_MONTHLY",
+    "period_YEARLY",
+    "days_since_signup",
+    "prior_partial_payments"
+  ],
+  "coefficients": [
+    0.6241,
+    -0.1832,
+    0.2815,
+    -0.1429,
+    0.0984,
+    -0.0321,
+    -0.0211,
+    -0.0812,
+    -0.1154,
+    0.4128
+  ],
+  "intercept": -1.1852,
+  "means": [
+    2.15,
+    14.62,
+    11.48,
+    16.85,
+    0.045,
+    0.095,
+    0.712,
+    0.148,
+    284.1,
+    0.38
+  ],
+  "stds": [
+    3.42,
+    11.25,
+    0.98,
+    8.92,
+    0.207,
+    0.293,
+    0.453,
+    0.355,
+    192.4,
+    0.64
+  ],
+  "metrics": {
+    "accuracy": 0.842,
+    "auc": 0.891
+  }
+}
+

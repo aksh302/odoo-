@@ -1,0 +1,311 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STAFF
+  CUSTOMER
+}
+
+enum BillingPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  DRAFT
+  QUOTATION
+  CONFIRMED
+  ACTIVE
+  PAUSED
+  CLOSED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  CONFIRMED
+  PAID
+  CANCELLED
+}
+
+enum DiscountType {
+  FIXED
+  PERCENT
+}
+
+enum DiscountScope {
+  PRODUCT
+  SUBSCRIPTION
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  UPI
+  CARD
+  CHEQUE
+  OTHER
+}
+
+model User {
+  id             Int              @id @default(autoincrement())
+  name           String
+  email          String           @unique
+  passwordHash   String
+  role           Role
+  isActive       Boolean          @default(true)
+  resetTokenHash String?
+  resetExpires   DateTime?
+  createdAt      DateTime         @default(now())
+  profile        CustomerProfile?
+  subscriptions  Subscription[]
+  invoices       Invoice[]
+}
+
+model CustomerProfile {
+  userId         Int     @id
+  user           User    @relation(fields: [userId], references: [id])
+  company        String?
+  phone          String?
+  billingAddress String?
+  taxId          String?
+}
+
+model Tax {
+  id       Int               @id @default(autoincrement())
+  name     String
+  percent  Decimal           @db.Decimal(5, 2)
+  products Product[]
+  lines    SubscriptionLine[]
+}
+
+model Product {
+  id            Int               @id @default(autoincrement())
+  name          String
+  type          String
+  salesPrice    Int               // paise
+  costPrice     Int               // paise
+  notes         String?
+  taxId         Int?
+  tax           Tax?              @relation(fields: [taxId], references: [id])
+  isArchived    Boolean           @default(false)
+  variants      Variant[]
+  discountLinks DiscountProduct[]
+}
+
+model Variant {
+  id         Int     @id @default(autoincrement())
+  productId  Int
+  product    Product @relation(fields: [productId], references: [id])
+  attribute  String
+  value      String
+  extraPrice Int     // paise
+  isArchived Boolean @default(false)
+
+  @@unique([productId, attribute, value])
+}
+
+model Plan {
+  id            Int                 @id @default(autoincrement())
+  name          String
+  price         Int                 // paise per period
+  billingPeriod BillingPeriod
+  minQty        Int                 @default(1)
+  startDate     DateTime            @db.Date
+  endDate       DateTime            @db.Date
+  autoClose     Boolean             @default(false)
+  closable      Boolean             @default(true)
+  pausable      Boolean             @default(true)
+  renewable     Boolean             @default(true)
+  isArchived    Boolean             @default(false)
+  subscriptions Subscription[]
+  templates     QuotationTemplate[]
+}
+
+model QuotationTemplate {
+  id           Int            @id @default(autoincrement())
+  name         String
+  planId       Int
+  plan         Plan           @relation(fields: [planId], references: [id])
+  validityDays Int
+  lines        TemplateLine[]
+}
+
+model TemplateLine {
+  id         Int               @id @default(autoincrement())
+  templateId Int
+  template   QuotationTemplate @relation(fields: [templateId], references: [id])
+  productId  Int
+  variantId  Int?
+  quantity   Int
+}
+
+model Subscription {
+  id              Int                @id @default(autoincrement())
+  number          String             @unique
+  customerId      Int
+  customer        User               @relation(fields: [customerId], references: [id])
+  planId          Int
+  plan            Plan               @relation(fields: [planId], references: [id])
+  status          SubscriptionStatus @default(DRAFT)
+  quotationDate   DateTime           @db.Date
+  validUntil      DateTime           @db.Date
+  startDate       DateTime           @db.Date
+  expiryDate      DateTime           @db.Date
+  paymentTerms    Int                @default(15)
+  anchorDay       Int?
+  nextBillingDate DateTime?          @db.Date
+  isSynthetic     Boolean            @default(false)
+  createdAt       DateTime           @default(now())
+  lines           SubscriptionLine[]
+  invoices        Invoice[]
+
+  @@index([status, nextBillingDate])
+  @@index([customerId])
+}
+
+model SubscriptionLine {
+  id             Int          @id @default(autoincrement())
+  subscriptionId Int
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  productId      Int
+  variantId      Int?
+  description    String
+  quantity       Int
+  unitPrice      Int          // paise, snapshot = salesPrice + extraPrice
+  taxId          Int?
+  tax            Tax?         @relation(fields: [taxId], references: [id])
+  amount         Int          // quantity * unitPrice
+}
+
+model Discount {
+  id          Int               @id @default(autoincrement())
+  name        String
+  type        DiscountType
+  value       Int               // paise if FIXED, whole percent 0-100 if PERCENT
+  minPurchase Int?              // paise
+  minQty      Int?
+  startDate   DateTime          @db.Date
+  endDate     DateTime          @db.Date
+  usageLimit  Int?
+  usedCount   Int               @default(0)
+  scope       DiscountScope
+  isActive    Boolean           @default(true)
+  products    DiscountProduct[]
+}
+
+model DiscountProduct {
+  discountId Int
+  productId  Int
+  discount   Discount @relation(fields: [discountId], references: [id])
+  product    Product  @relation(fields: [productId], references: [id])
+
+  @@id([discountId, productId])
+}
+
+model Invoice {
+  id               Int           @id @default(autoincrement())
+  number           String        @unique
+  subscriptionId   Int
+  subscription     Subscription  @relation(fields: [subscriptionId], references: [id])
+  customerId       Int
+  customer         User          @relation(fields: [customerId], references: [id])
+  periodStart      DateTime      @db.Date
+  periodEnd        DateTime      @db.Date
+  dueDate          DateTime      @db.Date
+  subtotal         Int           // sum of line amounts
+  discountTotal    Int
+  taxTotal         Int
+  total            Int           // subtotal - discountTotal + taxTotal
+  amountPaid       Int           @default(0)
+  status           InvoiceStatus @default(DRAFT)
+  customerSnapshot Json
+  emailedAt        DateTime?
+  isSynthetic      Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+  lines            InvoiceLine[]
+  payments         Payment[]
+
+  @@index([status, dueDate])
+  @@index([customerId])
+}
+
+model InvoiceLine {
+  id             Int     @id @default(autoincrement())
+  invoiceId      Int
+  invoice        Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId      Int?    // null for the plan-fee line
+  description    String
+  quantity       Int
+  unitPrice      Int
+  amount         Int     // quantity * unitPrice
+  discountId     Int?
+  discountAmount Int     @default(0)
+  taxPercent     Decimal @db.Decimal(5, 2) @default(0)
+  taxAmount      Int     @default(0)
+}
+
+model Payment {
+  id          Int           @id @default(autoincrement())
+  invoiceId   Int
+  invoice     Invoice       @relation(fields: [invoiceId], references: [id])
+  method      PaymentMethod
+  amount      Int           // paise, > 0
+  date        DateTime      @db.Date
+  reference   String?
+  note        String?
+  voidedAt    DateTime?
+  voidReason  String?
+  createdBy   Int?
+  isSynthetic Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+
+  @@index([invoiceId])
+  @@index([date])
+}
+
+model BillingRun {
+  id          Int       @id @default(autoincrement())
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  triggeredBy String
+  asOf        DateTime  @db.Date
+  created     Int       @default(0)
+  skipped     Int       @default(0)
+  failed      Int       @default(0)
+  errorLog    Json?
+}
+
+model AuditLog {
+  id       Int      @id @default(autoincrement())
+  userId   Int?
+  action   String
+  entity   String
+  entityId Int
+  oldValue Json?
+  newValue Json?
+  at       DateTime @default(now())
+
+  @@index([entity, entityId])
+}
+
+model Setting {
+  key   String @id
+  value String
+}
+
+model AiCache {
+  key       String   @id
+  value     Json
+  createdAt DateTime @default(now())
+}
+
