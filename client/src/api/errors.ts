@@ -19,6 +19,14 @@ const MESSAGES: Record<string, string> = {
   BILLING_RUNNING: 'A billing run is already in progress.',
   RATE_LIMITED: 'Too many attempts. Please wait a few minutes.',
   NOT_BUILT: 'This part of the server isn’t ready yet. Switch it back to mock data in .env (VITE_REAL_API).',
+  // Codes the server (server/) uses
+  DUPLICATE_EMAIL: 'An account with this email already exists.',
+  BILLING_LOCKED: 'A billing run is already in progress.',
+  PAYMENT_EXCEEDS_OUTSTANDING: 'Amount is more than the outstanding balance.',
+  INVOICE_NOT_CANCELLABLE: 'Invoices with payments recorded cannot be cancelled.',
+  EMAIL_SEND_FAILED: "The email couldn't be sent. The server's email (SMTP) settings in server/.env aren't set up.",
+  DATABASE_UNAVAILABLE: "The server can't reach its database. Check DATABASE_URL in server/.env (the server's terminal says more).",
+  DATABASE_NOT_SET_UP: 'The database has no tables yet. Run: npm --prefix server run db:setup',
 }
 
 export interface ParsedError {
@@ -37,7 +45,9 @@ export function parseError(err: unknown): ParsedError {
         fields: body.fields,
       }
     }
-    if (!err.response) return { code: 'NETWORK', message: 'Cannot reach the server.' }
+    // No answer, or the dev proxy couldn't reach the API (it replies 500/502/503/504 with no JSON body)
+    if (!err.response || [500, 502, 503, 504].includes(err.response.status))
+      return { code: 'NETWORK', message: 'Cannot reach the server. Is it running? Start it with npm run dev.' }
   }
   return { code: 'UNKNOWN', message: 'Something went wrong.' }
 }

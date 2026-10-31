@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../lib/errors';
+import { describeDbError } from '../lib/dbErrors';
 
 /**
  * Express error handler.
@@ -14,6 +15,14 @@ export function errorHandler(
 ): void {
   if (err instanceof AppError) {
     res.status(err.statusCode).json(err.toBody());
+    return;
+  }
+
+  // Database down or not set up: say so plainly instead of a generic 500
+  const db = describeDbError(err);
+  if (db) {
+    console.error(`[Database] ${db.message} ${db.hint}`);
+    res.status(503).json({ error: { code: db.code, message: db.message } });
     return;
   }
 
