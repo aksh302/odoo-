@@ -23,7 +23,7 @@ const iso = (d: dayjs.Dayjs) => d.format('YYYY-MM-DD')
 
 // ---------- helpers ----------
 
-function snapshotLine(productId: number, variantId: number | null | undefined, quantity: number): SubscriptionLine | null {
+export function snapshotLine(productId: number, variantId: number | null | undefined, quantity: number): SubscriptionLine | null {
   const p = products.find((x) => x.id === productId)
   if (!p) return null
   const v = variantId ? getVariants().find((x) => x.id === variantId && x.productId === productId) : undefined
@@ -44,7 +44,7 @@ function snapshotLine(productId: number, variantId: number | null | undefined, q
 export const findCustomer = (id: number): User | undefined =>
   customers.find((c) => c.id === id) ?? users.find((u) => u.id === id && u.role === 'CUSTOMER')
 
-const planAvailable = (p: Plan, on = todayISO()) => !p.isArchived && p.startDate <= on && on <= p.endDate
+export const planAvailable = (p: Plan, on = todayISO()) => !p.isArchived && p.startDate <= on && on <= p.endDate
 
 export const snapshotOf = (c: User) => ({
   name: c.name,
@@ -108,6 +108,7 @@ export interface SubRecord extends Subscription {
 }
 export const subs: SubRecord[] = []
 let subSeq = 0
+export const nextSubNumber = () => `SUB-${dayjs().year()}-${String(++subSeq).padStart(6, '0')}`
 
 function makeSub(i: number, status: SubscriptionStatus, planId: number, customer: User, startOffset: number, lineSpec: [number, number | null, number][]): SubRecord {
   const plan = plans.find((p) => p.id === planId)!
@@ -192,13 +193,15 @@ function makeSub(i: number, status: SubscriptionStatus, planId: number, customer
   spec.forEach(([status, planId, offset], i) => {
     // Yearly plan gets the big bundle; weekly trials stay small.
     const lines = planId === 2 ? lineSets[2] : planId === 3 ? lineSets[3] : lineSets[i % lineSets.length]
-    subs.push(makeSub(i + 1, status, planId, pool[i % pool.length], offset, lines))
+    // Cara (customer@brightloop.test) also owns a paused sub and a quotation, for the portal demo.
+    const owner = i === 10 || i === 14 ? cara : pool[i % pool.length]
+    subs.push(makeSub(i + 1, status, planId, owner, offset, lines))
   })
   subs.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')) // newest first
   renumberSeeded()
 })()
 
-function view(s: SubRecord): Subscription {
+export function view(s: SubRecord): Subscription {
   const c = findCustomer(s.customerId)
   const plan = plans.find((p) => p.id === s.planId)
   const { lines, ...rest } = s
@@ -246,7 +249,7 @@ function validateHeader(b: any): { plan?: Plan; error?: MockResult } {
 
 // ---------- status machine (SRS 9.5) ----------
 
-function transition(s: SubRecord, body: any, ctx: MockCtx): MockResult {
+export function transition(s: SubRecord, body: any, ctx: MockCtx): MockResult {
   const plan = plans.find((p) => p.id === s.planId)!
   const t = todayISO()
   const bad = (msg: string) => fail(409, 'INVALID_TRANSITION', msg)
@@ -366,7 +369,7 @@ export const subscriptionRoutes: MockRoutes = {
     if (built.error) return built.error
     const s: SubRecord = {
       id: nextId(),
-      number: `SUB-${dayjs().year()}-${String(++subSeq).padStart(6, '0')}`,
+      number: nextSubNumber(),
       customerId: body.customerId,
       planId: body.planId,
       status: 'DRAFT',

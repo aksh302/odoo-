@@ -5,6 +5,7 @@ import { useParams } from 'react-router-dom'
 import { billingApi, methodLabel } from '../api/billing'
 import type { InvoiceDetail } from '../api/billing'
 import { parseError } from '../api/errors'
+import { portalApi } from '../api/portal'
 import { Logo } from '../brand/Logo'
 import { brand } from '../brand/theme'
 import { formatINR } from '../lib/money'
@@ -15,20 +16,20 @@ const fmt = (d?: string | null) => (d ? dayjs(d).format('D MMM YYYY') : '—')
  * Printable invoice (A4). Opens in its own tab from "Print",
  * and stands in for the server PDF in mock mode.
  */
-export default function InvoicePrintPage() {
+export default function InvoicePrintPage({ source = 'staff' }: { source?: 'staff' | 'portal' }) {
   const { id } = useParams()
   const [data, setData] = useState<InvoiceDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    billingApi
-      .getInvoice(Number(id))
+    const load = source === 'portal' ? portalApi.getInvoice : billingApi.getInvoice
+    load(Number(id))
       .then((d) => {
         setData(d)
         document.title = d.invoice.number
       })
       .catch((err) => setError(parseError(err).message))
-  }, [id])
+  }, [id, source])
 
   if (error) return <Result status="404" title="Invoice not found" subTitle={error} />
   if (!data) return <div className="flex h-full items-center justify-center"><Spin /></div>

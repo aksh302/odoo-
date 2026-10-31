@@ -68,6 +68,11 @@ export const catalogRoutes: MockRoutes = {
   'GET /taxes': (ctx) => backOffice(ctx) ?? paginate(taxes, { ...ctx.query, limit: 100 }),
 
   'GET /products': (ctx) => {
+    // Customers may browse products for plan requests, without cost prices (FR-2.5).
+    if (ctx.me?.role === 'CUSTOMER') {
+      const live = products.filter((p) => !p.isArchived).map(withJoins).map(({ costPrice: _c, ...rest }) => ({ ...rest, costPrice: 0, variants: rest.variants.filter((v) => !v.isArchived) }))
+      return paginate(live, { ...ctx.query, limit: 100 })
+    }
     const denied = backOffice(ctx)
     if (denied) return denied
     const { q = '', archived } = ctx.query
@@ -120,9 +125,11 @@ export const catalogRoutes: MockRoutes = {
   },
 
   'GET /plans': (ctx) => {
-    const denied = backOffice(ctx)
-    if (denied) return denied
     const { q = '', available, archived, billingPeriod } = ctx.query
+    // Customers can browse plans available today (SRS 2.1).
+    const customerBrowsing = ctx.me?.role === 'CUSTOMER' && (available === 'true' || available === true)
+    const denied = customerBrowsing ? null : backOffice(ctx)
+    if (denied) return denied
     const today = todayISO()
     const all = plans
       .filter((p) => contains(p.name, q))

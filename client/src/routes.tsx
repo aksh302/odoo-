@@ -11,6 +11,7 @@ import InvoicePrintPage from './pages/InvoicePrintPage'
 import InvoicesPage from './pages/InvoicesPage'
 import PaymentsPage from './pages/PaymentsPage'
 import PlansPage from './pages/PlansPage'
+import PortalPage from './pages/PortalPage'
 import SubscriptionDetailPage from './pages/SubscriptionDetailPage'
 import SubscriptionFormPage from './pages/SubscriptionFormPage'
 import SubscriptionsPage from './pages/SubscriptionsPage'
@@ -67,8 +68,9 @@ export function AppRoutes() {
 
       {/* Customer portal */}
       <Route element={<ProtectedRoute roles={['CUSTOMER']} />}>
+        <Route path="/portal/invoices/:id/print" element={<InvoicePrintPage source="portal" />} />
         <Route element={<PortalLayout />}>
-          <Route path="/portal" element={<P title="My Account" todo="tabs: My Subscriptions (pause/resume/renew/close gated by plan flags; browse plans and subscribe), My Invoices (download PDF), My Payments; responsive from 360 px" />} />
+          <Route path="/portal" element={<PortalPage />} />
         </Route>
       </Route>
 

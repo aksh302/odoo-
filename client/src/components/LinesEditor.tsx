@@ -85,7 +85,7 @@ export function LinesEditor({ products, minQty = 1 }: { products: Product[]; min
                   <div className="pt-1 text-right">
                     <div className="font-medium">{formatINR(amount)}</div>
                     {line.productId && (
-                      <Typography.Text type="secondary" className="text-xs">
+                      <Typography.Text type="secondary" className="whitespace-nowrap text-xs">
                         {formatINR(unit)} each
                       </Typography.Text>
                     )}

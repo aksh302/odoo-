@@ -113,7 +113,11 @@ function TopBar({ brand }: { brand?: boolean }) {
     >
       {brand && <Logo />}
       <div className="flex-1" />
-      {USE_MOCKS && <Tag color="warning">Mock data</Tag>}
+      {USE_MOCKS && (
+        <Tag color="warning" className="hidden sm:inline-block">
+          Mock data
+        </Tag>
+      )}
       <Dropdown
         menu={{
           items: [{ key: 'logout', icon: <LogoutOutlined />, label: 'Log out' }],
@@ -126,7 +130,7 @@ function TopBar({ brand }: { brand?: boolean }) {
         <Button type="text" className="flex items-center gap-2">
           <Avatar size="small" icon={<UserOutlined />} />
           <span className="hidden sm:inline">{user?.name}</span>
-          <Tag>{user?.role === 'ADMIN' ? 'Admin' : user?.role === 'STAFF' ? 'Staff' : 'Customer'}</Tag>
+          <Tag className="hidden sm:inline-block">{user?.role === 'ADMIN' ? 'Admin' : user?.role === 'STAFF' ? 'Staff' : 'Customer'}</Tag>
         </Button>
       </Dropdown>
     </Header>
