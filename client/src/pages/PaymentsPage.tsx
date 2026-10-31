@@ -1,4 +1,4 @@
-import { SearchOutlined } from '@ant-design/icons'
+import { ScanOutlined, SearchOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, DatePicker, Input, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
@@ -6,6 +6,7 @@ import type { Dayjs } from 'dayjs'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { methodLabel } from '../api/billing'
+import { ReadPaymentDrawer } from '../components/ReadPaymentDrawer'
 import { RecordPaymentModal } from '../components/RecordPaymentModal'
 import { InvoiceStatusBadge } from '../components/StatusBadge'
 import { usePagedList } from '../hooks/usePagedList'
@@ -17,21 +18,35 @@ const fmt = (d: string) => dayjs(d).format('D MMM YYYY')
 /** SRS 9.7 /payments — payment list, outstanding invoices tab, record-payment modal. */
 export default function PaymentsPage() {
   const [tab, setTab] = useState('outstanding')
+  const [reading, setReading] = useState(false)
+  const [version, setVersion] = useState(0)
   return (
     <>
-      <Typography.Title level={3} className="mb-4">
-        Payments
-      </Typography.Title>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <Typography.Title level={3}>Payments</Typography.Title>
+        <Button type="primary" icon={<ScanOutlined />} onClick={() => setReading(true)}>
+          Read a payment
+        </Button>
+      </div>
       <Card>
         <Tabs
           activeKey={tab}
           onChange={setTab}
           items={[
-            { key: 'outstanding', label: 'Waiting for payment', children: <Outstanding /> },
-            { key: 'received', label: 'Received', children: <Received /> },
+            { key: 'outstanding', label: 'Waiting for payment', children: <Outstanding key={`o${version}`} /> },
+            { key: 'received', label: 'Received', children: <Received key={`r${version}`} /> },
           ]}
         />
       </Card>
+      <ReadPaymentDrawer
+        open={reading}
+        onClose={() => setReading(false)}
+        onRecorded={() => {
+          setReading(false)
+          setVersion((v) => v + 1)
+          setTab('received')
+        }}
+      />
     </>
   )
 }

@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# OCR engine files, copied from node_modules by scripts/setup-ocr.mjs
+public/ocr
