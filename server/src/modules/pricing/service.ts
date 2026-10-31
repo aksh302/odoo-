@@ -141,7 +141,7 @@ export class PricingService {
 
       // In-memory filter for usageLimit (avoids Prisma column-to-column comparison limitations)
       discounts = allDiscounts.filter(
-        (d) => d.usageLimit === null || d.usedCount < d.usageLimit,
+        (d) => d.usageLimit == null || d.usedCount < d.usageLimit,
       );
     }
 

@@ -15,7 +15,14 @@ router.get('/', requireAuth, requireRole(Role.ADMIN, Role.STAFF), async (req, re
     const pagination = getPagination(req);
     const customerId = req.query.customerId ? parseInt(req.query.customerId as string, 10) : undefined;
     const status = req.query.status as SubscriptionStatus | undefined;
-    const result = await SubscriptionService.listSubscriptions(pagination, { customerId, status });
+    const num = (v: unknown) => (v ? parseInt(v as string, 10) : undefined);
+    const result = await SubscriptionService.listSubscriptions(pagination, {
+      customerId,
+      status,
+      planId: num(req.query.planId),
+      q: req.query.q as string | undefined,
+      expiringWithin: num(req.query.expiringWithin),
+    });
     res.json(result);
   } catch (err) {
     next(err);

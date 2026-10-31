@@ -222,23 +222,77 @@ export class ReportsService {
     return header + rows.join('\n');
   }
 
-  static async getAuditLogs(page = 1, limit = 50) {
+  /**
+   * Audit log, newest first, with the actor's name (userName) and a readable label for the
+   * record (entityLabel: subscription/invoice number, product name, user email...).
+   * Filters: entity (e.g. 'Invoice'), q (matches the action or the record label).
+   */
+  static async getAuditLogs(page = 1, limit = 50, filters: { entity?: string; q?: string } = {}) {
     const skip = (page - 1) * limit;
-    const [data, total] = await Promise.all([
-      prisma.auditLog.findMany({
-        skip,
-        take: limit,
-        orderBy: { id: 'desc' },
-      }),
-      prisma.auditLog.count(),
+    const where: Prisma.AuditLogWhereInput = {};
+    if (filters.entity) where.entity = filters.entity;
+    if (filters.q) {
+      const q = filters.q.trim();
+      const or: Prisma.AuditLogWhereInput[] = [{ action: { contains: q, mode: 'insensitive' } }];
+      // Also find records whose number or name matches, e.g. "INV-2026-000012" or "Acme"
+      const [subs, invs, users] = await Promise.all([
+        prisma.subscription.findMany({ where: { number: { contains: q, mode: 'insensitive' } }, select: { id: true } }),
+        prisma.invoice.findMany({ where: { number: { contains: q, mode: 'insensitive' } }, select: { id: true } }),
+        prisma.user.findMany({
+          where: { OR: [{ name: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }] },
+          select: { id: true },
+        }),
+      ]);
+      if (subs.length) or.push({ entity: 'Subscription', entityId: { in: subs.map((x) => x.id) } });
+      if (invs.length) or.push({ entity: 'Invoice', entityId: { in: invs.map((x) => x.id) } });
+      if (users.length) {
+        or.push({ userId: { in: users.map((x) => x.id) } });
+        or.push({ entity: 'User', entityId: { in: users.map((x) => x.id) } });
+      }
+      where.OR = or;
+    }
+
+    const [rows, total] = await Promise.all([
+      prisma.auditLog.findMany({ where, skip, take: limit, orderBy: [{ at: 'desc' }, { id: 'desc' }] }),
+      prisma.auditLog.count({ where }),
     ]);
 
-    return {
-      data,
-      page,
-      limit,
-      total,
-    };
+    // Look up names in one query per entity type
+    const idsOf = (entity: string) => [...new Set(rows.filter((r) => r.entity === entity).map((r) => r.entityId))];
+    const userIds = [...new Set([...rows.map((r) => r.userId).filter((x): x is number => !!x), ...idsOf('User')])];
+    const [users, subs, invs, products, plans, variants, taxes, discounts, templates, payments] = await Promise.all([
+      prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, email: true } }),
+      prisma.subscription.findMany({ where: { id: { in: idsOf('Subscription') } }, select: { id: true, number: true } }),
+      prisma.invoice.findMany({ where: { id: { in: idsOf('Invoice') } }, select: { id: true, number: true } }),
+      prisma.product.findMany({ where: { id: { in: idsOf('Product') } }, select: { id: true, name: true } }),
+      prisma.plan.findMany({ where: { id: { in: idsOf('Plan') } }, select: { id: true, name: true } }),
+      prisma.variant.findMany({ where: { id: { in: idsOf('Variant') } }, select: { id: true, value: true, product: { select: { name: true } } } }),
+      prisma.tax.findMany({ where: { id: { in: idsOf('Tax') } }, select: { id: true, name: true } }),
+      prisma.discount.findMany({ where: { id: { in: idsOf('Discount') } }, select: { id: true, name: true } }),
+      prisma.quotationTemplate.findMany({ where: { id: { in: idsOf('QuotationTemplate') } }, select: { id: true, name: true } }),
+      prisma.payment.findMany({ where: { id: { in: idsOf('Payment') } }, select: { id: true, invoice: { select: { number: true } } } }),
+    ]);
+    const label = new Map<string, string>();
+    users.forEach((x) => label.set(`User:${x.id}`, x.email));
+    subs.forEach((x) => label.set(`Subscription:${x.id}`, x.number));
+    invs.forEach((x) => label.set(`Invoice:${x.id}`, x.number));
+    products.forEach((x) => label.set(`Product:${x.id}`, x.name));
+    plans.forEach((x) => label.set(`Plan:${x.id}`, x.name));
+    variants.forEach((x) => label.set(`Variant:${x.id}`, `${x.product.name} - ${x.value}`));
+    taxes.forEach((x) => label.set(`Tax:${x.id}`, x.name));
+    discounts.forEach((x) => label.set(`Discount:${x.id}`, x.name));
+    templates.forEach((x) => label.set(`QuotationTemplate:${x.id}`, x.name));
+    payments.forEach((x) => label.set(`Payment:${x.id}`, `Payment on ${x.invoice.number}`));
+    const nameOf = new Map(users.map((u) => [u.id, u.name]));
+
+    const data = rows.map((r) => ({
+      ...r,
+      userName: r.userId ? nameOf.get(r.userId) ?? null : null,
+      entityLabel: label.get(`${r.entity}:${r.entityId}`) ?? (r.entity === 'BillingRun' ? `Billing run #${r.entityId}` : `${r.entity} #${r.entityId}`),
+    }));
+
+    return { data, page, limit, total };
   }
+
 }
 

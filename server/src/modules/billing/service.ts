@@ -161,8 +161,10 @@ export class BillingService {
         include: { products: true },
       });
       const activeDiscounts = allDiscounts.filter(
-        (d) => d.usageLimit === null || d.usedCount < d.usageLimit,
+        (d) => d.usageLimit == null || d.usedCount < d.usageLimit,
       );
+      // Discounts whose usage limit runs out partway through this run
+      const exhaustedDiscounts = new Set<number>();
 
       // Pre-allocate invoice sequence block in a single query
       let baseInvSeq = 1;
@@ -217,26 +219,41 @@ export class BillingService {
                     continue;
                   }
 
-                  // Evaluate pricing with prefetched discounts
-                  const pricing = await PricingService.computePricing(
-                    sub.plan,
-                    sub.lines.map((l) => ({
-                      productId: l.productId,
-                      variantId: l.variantId,
-                      description: l.description,
-                      quantity: l.quantity,
-                      unitPrice: l.unitPrice,
-                      taxPercent: l.tax ? Number(l.tax.percent) : 0,
-                    })),
-                    pStart,
-                    activeDiscounts,
-                  );
-
-                  // Claim discounts atomically
-                  for (const line of pricing.lines) {
-                    if (line.discountId) {
-                      await PricingService.claimDiscountUsageTx(tx, line.discountId);
+                  // Price the period and claim each discount used. If a discount's usage limit
+                  // runs out during this run, bill without it (next best discount, or none)
+                  // instead of failing the subscription and leaving the customer unbilled.
+                  const priceLines = sub.lines.map((l) => ({
+                    productId: l.productId,
+                    variantId: l.variantId,
+                    description: l.description,
+                    quantity: l.quantity,
+                    unitPrice: l.unitPrice,
+                    taxPercent: l.tax ? Number(l.tax.percent) : 0,
+                  }));
+                  let pricing;
+                  for (;;) {
+                    pricing = await PricingService.computePricing(
+                      sub.plan,
+                      priceLines,
+                      pStart,
+                      activeDiscounts.filter((d) => !exhaustedDiscounts.has(d.id)),
+                    );
+                    const claimed: number[] = [];
+                    let ranOut: number | null = null;
+                    for (const line of pricing.lines) {
+                      if (!line.discountId) continue;
+                      try {
+                        await PricingService.claimDiscountUsageTx(tx, line.discountId);
+                        claimed.push(line.discountId);
+                      } catch (e: any) {
+                        if (e?.code !== 'DISCOUNT_EXHAUSTED') throw e;
+                        ranOut = line.discountId;
+                        break;
+                      }
                     }
+                    if (ranOut === null) break;
+                    for (const id of claimed) await PricingService.returnDiscountUsageTx(tx, id);
+                    exhaustedDiscounts.add(ranOut);
                   }
 
                   // Customer snapshot
@@ -245,6 +262,7 @@ export class BillingService {
                     name: sub.customer.name,
                     email: sub.customer.email,
                     company: sub.customer.profile?.company || null,
+                    phone: sub.customer.profile?.phone || null,
                     address: sub.customer.profile?.billingAddress || null,
                     taxId: sub.customer.profile?.taxId || null,
                   };
@@ -305,6 +323,15 @@ export class BillingService {
             }
           }),
         );
+      }
+
+      // Hand back the numbers this run reserved but didn't use, so invoice numbers stay
+      // consecutive (GST needs an unbroken series). Safe: only the billing run, which holds
+      // the advisory lock, takes numbers from invoice_seq.
+      try {
+        await prisma.$executeRaw`SELECT setval('invoice_seq', ${nextSeqCounter}, false)`;
+      } catch {
+        // Non-Postgres fallback
       }
 
       // Update BillingRun summary

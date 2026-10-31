@@ -112,6 +112,9 @@ export class PaymentService {
       }
 
       const paymentDate = data.date || todayIST();
+      if (paymentDate > todayIST()) {
+        throw Errors.validationError({ date: 'Payment date cannot be in the future' });
+      }
 
       const payment = await tx.payment.create({
         data: {

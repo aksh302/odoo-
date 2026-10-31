@@ -30,25 +30,45 @@ export class SubscriptionService {
     }
   }
 
+  /**
+   * Filters: customerId, status, planId, q (subscription number, customer name/email/company),
+   * expiringWithin (days: expiry date between today and today + N, soonest first).
+   */
   static async listSubscriptions(
     pagination: PaginationParams,
-    filters?: { customerId?: number; status?: SubscriptionStatus },
+    filters?: { customerId?: number; status?: SubscriptionStatus; planId?: number; q?: string; expiringWithin?: number },
   ) {
     const where: any = { isSynthetic: false };
     if (filters?.customerId) where.customerId = filters.customerId;
     if (filters?.status) where.status = filters.status;
+    if (filters?.planId) where.planId = filters.planId;
+    if (filters?.q) {
+      const q = filters.q.trim();
+      where.OR = [
+        { number: { contains: q, mode: 'insensitive' } },
+        { customer: { name: { contains: q, mode: 'insensitive' } } },
+        { customer: { email: { contains: q, mode: 'insensitive' } } },
+        { customer: { profile: { company: { contains: q, mode: 'insensitive' } } } },
+      ];
+    }
+    let orderBy: any = { id: 'desc' };
+    if (filters?.expiringWithin) {
+      const today = todayIST();
+      where.expiryDate = { gte: today, lte: addDays(today, filters.expiringWithin) };
+      orderBy = { expiryDate: 'asc' };
+    }
 
     const [data, total] = await Promise.all([
       prisma.subscription.findMany({
         where,
         include: {
-          customer: { select: { id: true, name: true, email: true } },
+          customer: { select: { id: true, name: true, email: true, profile: { select: { company: true } } } },
           plan: true,
           lines: true,
         },
         skip: pagination.skip,
         take: pagination.limit,
-        orderBy: { id: 'desc' },
+        orderBy,
       }),
       prisma.subscription.count({ where }),
     ]);
@@ -116,6 +136,15 @@ export class SubscriptionService {
     return lineCreations;
   }
 
+  /** Every product line needs at least the plan's minimum quantity. */
+  static checkMinQty(minQty: number, lines: Array<{ quantity: number }>) {
+    const fields: Record<string, string> = {};
+    lines.forEach((l, i) => {
+      if (l.quantity < minQty) fields[`lines.${i}.quantity`] = `At least ${minQty} for this plan`;
+    });
+    if (Object.keys(fields).length) throw Errors.validationError(fields);
+  }
+
   static async createSubscription(
     actorId: number,
     data: {
@@ -157,6 +186,7 @@ export class SubscriptionService {
 
     const plan = await prisma.plan.findUnique({ where: { id: targetPlanId } });
     if (!plan || plan.isArchived) throw Errors.planArchived();
+    this.checkMinQty(plan.minQty, finalLines);
 
     const customer = await prisma.user.findUnique({ where: { id: data.customerId } });
     if (!customer || !customer.isActive) throw Errors.notFound('Customer', data.customerId);
@@ -233,6 +263,12 @@ export class SubscriptionService {
     const expiryDate = data.expiryDate ?? sub.expiryDate;
     if (expiryDate <= startDate) {
       throw Errors.validationError({ expiryDate: 'expiryDate must be after startDate' });
+    }
+
+    if (data.lines || data.planId) {
+      const plan = await prisma.plan.findUnique({ where: { id: data.planId ?? sub.planId } });
+      const lines = data.lines ?? (await prisma.subscriptionLine.findMany({ where: { subscriptionId } }));
+      if (plan) this.checkMinQty(plan.minQty, lines);
     }
 
     const lineCreations = data.lines ? await this.snapshotLines(data.lines) : null;

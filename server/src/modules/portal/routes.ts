@@ -8,6 +8,7 @@ import { Role, SubscriptionStatus } from '@prisma/client';
 import { SubscriptionService } from '../subscriptions/service';
 import { CreateSubscriptionSchema } from '../subscriptions/schemas';
 import { validate } from '../../middleware/validate';
+import { todayIST } from '../../lib/dates';
 import { BillingService } from '../billing/service';
 import { PaymentService } from '../payments/service';
 
@@ -60,10 +61,23 @@ router.post(
   validate({ body: CreateSubscriptionSchema.omit({ customerId: true }) }),
   async (req, res, next) => {
     try {
-      const sub = await SubscriptionService.createSubscription(req.user!.userId, {
+      // Only plans on sale today can be picked from the portal
+      const plan = req.body.planId ? await prisma.plan.findUnique({ where: { id: req.body.planId } }) : null;
+      const today = todayIST();
+      if (plan && (plan.isArchived || plan.startDate > today || plan.endDate < today)) {
+        throw Errors.validationError({ planId: 'This plan is not available' });
+      }
+
+      const created = await SubscriptionService.createSubscription(req.user!.userId, {
         ...req.body,
         customerId: req.user!.customerId!,
       });
+      // A customer's request arrives as a Quotation for staff to review and confirm
+      const sub = await SubscriptionService.transitionStatus(
+        req.user!.userId,
+        created.id,
+        SubscriptionStatus.QUOTATION,
+      );
       res.status(201).json({ subscription: sub });
     } catch (err) {
       next(err);

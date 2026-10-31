@@ -4,14 +4,17 @@ React + Vite + TypeScript + Ant Design + Tailwind, built to SRS v1.1 sections 7.
 
 ## Run it
 
+To run the whole app (web + server + database), see the README in the project folder:
+`npm run setup` once, then `npm run dev`.
+
+**Web app only, on demo data** (no server needed): set `VITE_USE_MOCKS=true` in `client/.env`, then
+
 ```bash
 cd client
-npm install
-cp .env.example .env      # VITE_USE_MOCKS=true by default
 npm run dev               # http://localhost:5173
 ```
 
-**Mock mode** (no backend needed) — log in with password `Demo@12345`:
+Mock logins use password `Demo@12345`:
 
 | Email | Role | Lands on |
 |---|---|---|
@@ -19,15 +22,8 @@ npm run dev               # http://localhost:5173
 | staff@brightloop.test | STAFF | /dashboard (no Taxes, Discounts, Staff) |
 | customer@brightloop.test | CUSTOMER | /portal |
 
-**Mixed mode (backend half done):** keep `VITE_USE_MOCKS=true` and list the ready areas, e.g.
-`VITE_REAL_API=/auth,/products,/plans`. Those go to the real server, everything else stays on mock data.
-Put `/auth` first so mock screens accept the real login. The header shows "Real + mock data".
-
-**Check the backend:** with the server running, `npm run check-api` logs in and calls every GET endpoint the
-frontend uses, printing OK / MISSING / WRONG SHAPE per endpoint (read-only, changes nothing).
-
-**Real API:** set `VITE_USE_MOCKS=false`. Calls to `/api` are proxied to `http://localhost:4000`
-(change the port in `vite.config.ts` if Akshaya's server uses another).
+**How it talks to the server:** calls to `/api` are proxied to `http://localhost:4000`.
+`src/api/backend.ts` maps the screens' calls onto the server's routes and shapes.
 
 ## What's done
 

@@ -68,6 +68,10 @@ router.get('/products', requireAuth, async (req, res, next) => {
     const pagination = getPagination(req);
     const includeArchived = req.query.includeArchived === 'true' && req.user!.role === Role.ADMIN;
     const result = await CatalogService.listProducts(pagination, includeArchived);
+    // Customers browse products in the portal, but cost prices are internal
+    if (req.user!.role === Role.CUSTOMER) {
+      result.data = result.data.map(({ costPrice: _cost, ...p }: any) => p);
+    }
     res.json(result);
   } catch (err) {
     next(err);
@@ -76,8 +80,8 @@ router.get('/products', requireAuth, async (req, res, next) => {
 
 router.get('/products/:id', requireAuth, async (req, res, next) => {
   try {
-    const product = await CatalogService.getProduct(parseInt(req.params.id as string, 10));
-    res.json({ product });
+    const { costPrice, ...rest } = await CatalogService.getProduct(parseInt(req.params.id as string, 10));
+    res.json({ product: req.user!.role === Role.CUSTOMER ? rest : { ...rest, costPrice } });
   } catch (err) {
     next(err);
   }

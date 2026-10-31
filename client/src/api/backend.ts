@@ -162,15 +162,8 @@ const RULES: Rule[] = [
   {
     method: 'GET',
     path: /^\/subscriptions$/,
-    to: (_m, c) => bigPage(c),
-    out: (d, c) => {
-      if (!d?.data) return d
-      const rows = d.data
-        .map(withCompany)
-        .map((s: Json) => ({ ...s, recurringAmount: recurring(s) }))
-        .filter((s: Json) => (!c.params?.planId || s.planId === Number(c.params.planId)) && (contains(s.number, c.params?.q) || contains(s.customer?.name, c.params?.q) || contains(s.customer?.company, c.params?.q)))
-      return paged(rows, c.params)
-    },
+    to: same, // server filters by status, customerId, planId, q, expiringWithin
+    out: (d) => (d?.data ? { ...d, data: d.data.map(withCompany).map((s: Json) => ({ ...s, recurringAmount: recurring(s) })) } : d),
   },
   {
     method: 'GET',

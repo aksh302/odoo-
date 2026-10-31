@@ -1,0 +1,14 @@
+{
+  "name": "brightloop",
+  "private": true,
+  "description": "Brightloop Subscription Management System: React frontend (client/) and Express + Postgres backend (server/)",
+  "scripts": {
+    "setup": "node scripts/init-env.mjs && npm install && npm --prefix server install && npm --prefix client install && npm --prefix server run db:setup",
+    "dev": "concurrently -k -n api,web -c green,cyan \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "reset-demo": "npm --prefix server run db:reset",
+    "test": "npm --prefix server test && npm --prefix client test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

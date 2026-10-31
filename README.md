@@ -1,58 +1,95 @@
-# Brightloop Subscription Management System (SMS) — Backend & AI
+# Brightloop Subscription Management System
 
-Brightloop Software backend and AI features for recurring subscription management, automated billing runs, and AI financial copilots.
+One place to run a subscription business: products and plans → quotations → subscriptions →
+automatic monthly invoices with GST and discounts → payments → a finance dashboard, plus a
+self-service portal for customers.
 
-## 🛠️ Stack & Architecture
-- **Runtime**: Node.js 20, TypeScript, Express (Modular Monolith)
-- **Database**: PostgreSQL with Prisma ORM
-- **Security & Validation**: Zod, Helmet, CORS allow-list, Express-Rate-Limit, BCrypt, JWT
-- **Jobs & Documents**: node-cron, PDFKit, Nodemailer
-- **Testing**: Vitest + Supertest
-- **ML / AI**: scikit-learn for Logistic Regression training, in-process Node.js runtime scoring (`ml/model.json`), provider-agnostic LLM interface (Gemini, Anthropic, OpenAI) with strict guardrails and fallbacks.
+| Folder | What | Stack |
+|---|---|---|
+| `client/` | Web app (back office + customer portal) | React 19, Vite, TypeScript, Ant Design, Tailwind |
+| `server/` | REST API, billing engine, jobs, PDF, email, AI | Node 20, Express, TypeScript, Prisma, PostgreSQL |
+| `ml/` | Late-payment risk model (training only) | Python, scikit-learn |
+| `docs/` | Backend SRS and design decisions | |
 
 ---
 
-## 🚀 Setup Instructions
+## Run it
 
-### 1. Environment Configuration
-Copy `.env.example` to `server/.env` and configure your credentials:
+You need **Node 20+** and **PostgreSQL 14+**.
+
+**1. Postgres (once).** On a Mac with Homebrew:
+
 ```bash
-cp server/.env.example server/.env
+brew install postgresql@16
+brew services start postgresql@16
+createdb brightloop
 ```
 
-Key environment variables:
-- `DATABASE_URL`: PostgreSQL connection string (e.g. `postgresql://user:password@localhost:5432/brightloop`)
-- `JWT_SECRET`: Random 32+ character string
-- `CLIENT_URL`: Allowed frontend origin (`http://localhost:5173`)
-- `DEMO_MODE`: Set to `true` to allow `asOf` overrides during billing runs
-- `TZ`: `Asia/Kolkata`
-- `AI_ENABLED`: `true`
-- `LLM_PROVIDER`: `gemini` | `anthropic` | `openai`
-- `LLM_API_KEY`: API key for the chosen provider
+(Or install [Postgres.app](https://postgresapp.com), click Initialize, then run `createdb brightloop`.)
 
-### 2. Install Dependencies & Build
+**2. Install and build the demo database (once):**
+
 ```bash
-cd server
-npm install
-npm run build
+npm run setup
 ```
 
-### 3. Database Migration & Seed
+This creates `server/.env` and `client/.env`, installs everything, creates the tables and loads
+a year of demo data (customers, subscriptions, invoices, payments, overdue accounts).
+
+**3. Start both apps:**
+
 ```bash
-# Push schema to database
-npx prisma db push
-
-# Apply SQL sequences, constraints, and initial settings
-# (Executed automatically by seed script)
-npm run seed
-
-# Seed with load testing (10k subscriptions, ~1k due) and synthetic ML history:
-npm run seed -- --load --synthetic-history
+npm run dev
 ```
 
-Default credentials:
-- **Admin**: `admin@brightloop.dev` / `Brightloop@123`
-- **Staff**: `staff1@brightloop.dev` / `Brightloop@123`
+Open **http://localhost:5173**. The API runs on port 4000.
+
+### Logins (password for all: `Brightloop@123`)
+
+| Who | Email | Sees |
+|---|---|---|
+| Admin | `admin@brightloop.dev` | Everything, including taxes, discounts, staff |
+| Staff | `staff1@brightloop.dev` | Day-to-day: customers, subscriptions, invoices, payments |
+| Customer | `acme@example.com` | The portal: own subscriptions, invoices, payments |
+| Customer (overdue) | `finance@kaverifoods.in` | A customer with unpaid invoices |
+
+### Useful commands
+
+| Command | Does |
+|---|---|
+| `npm run dev` | Starts server and web app together |
+| `npm run reset-demo` | Wipes the database and reloads the demo data (dates move with today) |
+| `npm test` | Server and client tests |
+
+### No database on the machine you're presenting from?
+
+Set `VITE_USE_MOCKS=true` in `client/.env` and run `cd client && npm run dev`. The web app then
+uses built-in demo data, no server needed. Mock logins use password `Demo@12345`
+(`admin@brightloop.test`, `staff@brightloop.test`, `customer@brightloop.test`).
+
+### Settings worth knowing (`server/.env`)
+
+- `DEMO_MODE=true` lets the Billing page bill "as of" a future date, to show catch-up billing.
+- SMTP: fill in Mailtrap (or any SMTP) details to actually send invoice and reminder emails.
+  Without them the app works the same and still logs reminders on the invoice.
+- `AI_ENABLED=true` plus `LLM_PROVIDER` and `LLM_API_KEY` turns on the Copilot, reminder drafts
+  and invoice explanations. With `false` they fall back to built-in answers.
+
+Your company's name, address, GSTIN and UPI ID (printed on invoices and the UPI QR) are in
+`client/.env` (`VITE_COMPANY_*`, `VITE_UPI_ID`).
+
+---
+
+## How the billing stays correct
+
+- Money is integer paise everywhere; rounding is half-up per line.
+- The billing run holds a Postgres advisory lock, bills each subscription in its own
+  transaction, catches up every missed period, and a unique index on
+  (subscription, period start) makes it impossible to bill a period twice.
+- Invoice numbers (`INV-YYYY-000001`) are consecutive with no gaps, as GST requires.
+- Payments lock the invoice row, can't exceed the balance or be dated in the future, and turn
+  the invoice Paid when covered. Only an admin can void one.
+- Edits to plans, prices or taxes never change invoices already issued.
 
 ---
 
@@ -77,11 +114,14 @@ This script exports `ml/model.json` with standardized weights, intercepts, and m
 ---
 
 ## 🧪 Running Tests
+
 ```bash
-cd server
 npm test
 ```
-All 10 test suites covering authentication, RBAC, money precision, anchorDay clamping, catalog rules, state machines, billing correctness, payments, portal isolation, and AI guardrails are green.
+
+The server suite covers authentication, RBAC, money precision, anchor-day clamping, catalog
+rules, state machines, pricing, payments, portal isolation and AI guardrails. The live billing
+tests use a separate `test` schema: run `cd server && npx tsx setup_test_db.ts` once first.
 
 ---
 
@@ -120,4 +160,3 @@ All 10 test suites covering authentication, RBAC, money precision, anchorDay cla
    - Copilot answers questions without SQL injection (`POST /api/ai/ask`).
    - Overdue reminder draft generated (`POST /api/ai/invoices/:id/reminder`).
    - Customer requests plain-English explanation (`POST /api/ai/portal/invoices/:id/explain`).
-

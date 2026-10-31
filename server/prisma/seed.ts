@@ -2,12 +2,14 @@ import { PrismaClient, Role, BillingPeriod, SubscriptionStatus, InvoiceStatus, D
 import bcrypt from 'bcrypt';
 import { readFileSync } from 'fs';
 import path from 'path';
+import { seedDemoHistory } from './demo';
 
 const prisma = new PrismaClient();
 
 const args = process.argv.slice(2);
 const LOAD = args.includes('--load');
 const SYNTHETIC = args.includes('--synthetic-history');
+const DEMO = args.includes('--demo');
 
 const DEFAULT_PASSWORD = 'Brightloop@123';
 const SALT_ROUNDS = 10;
@@ -658,9 +660,12 @@ async function applyConstraints() {
     const sql = readFileSync(sqlPath, 'utf-8');
     // Split by semicolons and execute each statement
     const statements = sql
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('--')) // drop comment lines, keep the SQL under them
+      .join('\n')
       .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0 && !s.startsWith('--'));
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
 
     for (const stmt of statements) {
       try {
@@ -682,11 +687,18 @@ async function applyConstraints() {
 
 async function main() {
   console.log('🚀 Brightloop SMS Seed Script');
-  console.log(`   Flags: --load=${LOAD}, --synthetic-history=${SYNTHETIC}`);
+  console.log(`   Flags: --load=${LOAD}, --synthetic-history=${SYNTHETIC}, --demo=${DEMO}`);
   console.log('');
 
   // Apply constraints first
   await applyConstraints();
+
+  // Seeding twice would duplicate the catalog. To start over: npm run reset-demo
+  if ((await prisma.product.count()) > 0 && !LOAD && !SYNTHETIC) {
+    console.log('ℹ️  The database already has data, so nothing was added.');
+    console.log('   To wipe it and rebuild the demo: npm run reset-demo (from the project folder)');
+    return;
+  }
 
   // Always seed core data
   const coreData = await seedCore();
@@ -697,6 +709,10 @@ async function main() {
 
   if (SYNTHETIC) {
     await seedSyntheticHistory(coreData);
+  }
+
+  if (DEMO) {
+    await seedDemoHistory(prisma, coreData, await bcrypt.hash(DEFAULT_PASSWORD, SALT_ROUNDS));
   }
 
   console.log('\n🎉 Seeding complete!');

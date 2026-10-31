@@ -23,9 +23,12 @@ async function setup() {
   await prisma.$executeRawUnsafe('SET search_path TO test, public;');
 
   const statements = sql
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('--')) // drop comment lines, keep the SQL under them
+    .join('\n')
     .split(';')
-    .map(s => s.trim())
-    .filter(s => s.length > 0 && !s.startsWith('--'));
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 
   for (const stmt of statements) {
     try {

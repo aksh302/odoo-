@@ -24,11 +24,13 @@ export const generalLimiter = rateLimit({
 
 /**
  * Login/auth rate limiter.
- * 10 requests per 15 minutes per IP.
+ * 10 failed attempts per 15 minutes per IP. Successful logins don't count, so switching
+ * between accounts (admin, staff, customer) never locks anyone out.
  */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
   message: {

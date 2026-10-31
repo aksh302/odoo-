@@ -63,7 +63,10 @@ router.get('/csv', requireAuth, requireRole(Role.ADMIN, Role.STAFF), handleCsvEx
 router.get('/audit', requireAuth, requireRole(Role.ADMIN, Role.STAFF), async (req, res, next) => {
   try {
     const pagination = getPagination(req);
-    const logs = await ReportsService.getAuditLogs(pagination.page, pagination.limit);
+    const logs = await ReportsService.getAuditLogs(pagination.page, pagination.limit, {
+      entity: req.query.entity as string | undefined,
+      q: req.query.q as string | undefined,
+    });
     res.json(logs);
   } catch (err) {
     next(err);
